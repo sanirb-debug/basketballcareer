@@ -1,0 +1,125 @@
+import type { Clock } from './types';
+
+/**
+ * The sim clock and the basketball calendar (SPEC §3).
+ *
+ * A run starts in August — the head of the Aug–Oct offseason block that
+ * precedes the Nov–Feb season, so month 0 lines up with the start of a
+ * basketball/school year.
+ */
+
+export const START_YEAR = 2026;
+/** 0 = January, so 7 = August. */
+export const START_MONTH = 7;
+export const STARTING_AGE_YEARS = 13;
+
+export const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
+
+export type SeasonPhase =
+  | 'REGULAR_SEASON'
+  | 'POSTSEASON'
+  | 'AAU'
+  | 'LIVE_PERIOD'
+  | 'OFFSEASON';
+
+export interface PhaseInfo {
+  phase: SeasonPhase;
+  label: string;
+  /**
+   * Action-point budget from SPEC §3. Stored for Phase 3 — nothing spends or
+   * enforces it yet.
+   */
+  actionPoints: number;
+}
+
+/** Indexed by calendar month, 0 = January. */
+const PHASE_BY_MONTH: readonly PhaseInfo[] = [
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Jan
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Feb
+  { phase: 'POSTSEASON', label: 'Playoffs', actionPoints: 1 }, // Mar
+  { phase: 'AAU', label: 'AAU / Spring Circuit', actionPoints: 3 }, // Apr
+  { phase: 'AAU', label: 'AAU / Spring Circuit', actionPoints: 3 }, // May
+  { phase: 'AAU', label: 'AAU / Spring Circuit', actionPoints: 3 }, // Jun
+  { phase: 'LIVE_PERIOD', label: 'Live Period', actionPoints: 1 }, // Jul
+  { phase: 'OFFSEASON', label: 'Offseason', actionPoints: 4 }, // Aug
+  { phase: 'OFFSEASON', label: 'Offseason', actionPoints: 4 }, // Sep
+  { phase: 'OFFSEASON', label: 'Offseason', actionPoints: 4 }, // Oct
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Nov
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Dec
+];
+
+export function phaseFor(clock: Clock): PhaseInfo {
+  return PHASE_BY_MONTH[clock.month] as PhaseInfo;
+}
+
+/** Absolute month index, for arithmetic across year boundaries. */
+export function absoluteMonth(year: number, month: number): number {
+  return year * 12 + month;
+}
+
+export function advanceClock(clock: Clock): Clock {
+  const next = absoluteMonth(clock.year, clock.month) + 1;
+  return { year: Math.floor(next / 12), month: next % 12 };
+}
+
+export function ageInMonths(
+  clock: Clock,
+  birthYear: number,
+  birthMonth: number,
+): number {
+  return (
+    absoluteMonth(clock.year, clock.month) - absoluteMonth(birthYear, birthMonth)
+  );
+}
+
+export function ageYears(
+  clock: Clock,
+  birthYear: number,
+  birthMonth: number,
+): number {
+  return Math.floor(ageInMonths(clock, birthYear, birthMonth) / 12);
+}
+
+/**
+ * Given a rolled birth month, the birth year that makes the player exactly
+ * `STARTING_AGE_YEARS` at the start of the run.
+ *
+ * Born Jan–Aug and they turn 13 before the August start (age 13y0m–13y7m);
+ * born Sep–Dec and their 13th birthday was in the prior calendar year
+ * (age 13y8m–13y11m). The spread across runs is the relative-age effect.
+ */
+export function birthYearForMonth(birthMonth: number): number {
+  const offset = birthMonth <= START_MONTH ? 0 : 1;
+  return START_YEAR - STARTING_AGE_YEARS - offset;
+}
+
+export function formatClock(clock: Clock): string {
+  return `${MONTH_NAMES[clock.month]} ${clock.year}`;
+}
+
+export function formatAge(months: number): string {
+  return `${Math.floor(months / 12)}y ${months % 12}m`;
+}
+
+/** Inches as feet-and-inches, e.g. 68.5 -> `5'8.5"`. */
+export function formatHeight(inches: number): string {
+  const feet = Math.floor(inches / 12);
+  const rem = inches - feet * 12;
+  const shown = Math.round(rem * 10) / 10;
+  // Rounding 11.97 up to 12.0 would render 5'12"; carry into the feet instead.
+  if (shown >= 12) return `${feet + 1}'0"`;
+  return `${feet}'${shown}"`;
+}
