@@ -12,7 +12,12 @@
     "verify:phase0": "vitest run src/verify/phase0.test.ts",
     "verify:phase1": "vitest run src/verify/phase1.test.ts",
     "verify:phase2": "vitest run src/verify/phase2.test.ts",
-    "verify:phase3": "vitest run src/verify/phase3.test.ts"
+    "verify:phase3": "vitest run src/verify/phase3.test.ts",
+    "verify:phase4": "vitest run src/verify/phase4.test.ts",
+    "verify:phase5": "vitest run src/verify/phase5.test.ts",
+    "verify:phase6": "vitest run src/verify/phase6.test.ts",
+    "verify:phase7": "vitest run src/verify/phase7.test.ts",
+    "verify:phase8": "vitest run src/verify/phase8.test.ts"
   },
   "dependencies": {
     "idb": "8.0.3",

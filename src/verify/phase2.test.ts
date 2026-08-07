@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import { createRng, seedToState } from '../engine/rng';
 import { createGame, type CreationInput } from '../engine/newGame';
-import { tick } from '../engine/tick';
+import { autoTick } from './harness';
 import { GAME_MINUTES, minutesFor, resolveGame } from '../engine/gameSim';
 import { SCHOOLS } from '../engine/school';
 import {
@@ -261,18 +261,22 @@ describe('the season calendar (SPEC §3, §13)', () => {
     expect(seasonYearForClock({ year: 2027, month: 10 })).toBe(2027); // Nov
   });
 
-  test('grades run freshman through senior, then graduate', () => {
-    expect(gradeForSeason(2026)).toBe(9);
-    expect(gradeForSeason(2029)).toBe(FINAL_GRADE);
-    expect(hasGraduated(2029)).toBe(false);
-    expect(hasGraduated(2030)).toBe(true);
+  test('grades run 8th grade through senior, then graduate', () => {
+    // The slice opens in 8th grade so that signing day lands at 18 (SPEC §18).
+    expect(gradeForSeason(2026)).toBe(8);
+    expect(gradeForSeason(2030)).toBe(FINAL_GRADE);
+    expect(hasGraduated(2030)).toBe(false);
+    expect(hasGraduated(2031)).toBe(true);
   });
 });
 
 describe('a played season (SPEC §13)', () => {
   function playMonths(months: number, seed = 808): GameState {
     let state = createGame(seed, INPUT);
-    for (let i = 0; i < months; i++) state = tick(state, []);
+    for (let i = 0; i < months; i++) {
+      if (state.careerEnd) break;
+      state = autoTick(state, []);
+    }
     return state;
   }
 
@@ -309,7 +313,7 @@ describe('a played season (SPEC §13)', () => {
     expect(state.history.length).toBe(1);
 
     const summary = state.history[0] as NonNullable<(typeof state.history)[0]>;
-    expect(summary.grade).toBe(9);
+    expect(summary.grade).toBe(8);
     expect(summary.seasonYear).toBe(2026);
     expect(summary.wins + summary.losses).toBeGreaterThan(20);
     expect(summary.totals.points).toBeGreaterThanOrEqual(0);
@@ -317,10 +321,10 @@ describe('a played season (SPEC §13)', () => {
     expect(state.season).toBeNull();
   });
 
-  test('four seasons accumulate over a high school career', () => {
+  test('five seasons accumulate from 8th grade through senior year', () => {
     const state = playMonths(56);
-    expect(state.history.length).toBe(4);
-    expect(state.history.map((h) => h.grade)).toEqual([9, 10, 11, 12]);
+    expect(state.history.length).toBe(5);
+    expect(state.history.map((h) => h.grade)).toEqual([8, 9, 10, 11, 12]);
   });
 
   test('the postseason is single elimination', () => {

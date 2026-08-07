@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import { createGame, type CreationInput } from '../engine/newGame';
 import { tick } from '../engine/tick';
+import { autoTick } from './harness';
 import { ageInMonths } from '../engine/calendar';
 import { GROWTH, isSpurtGrowthMonth } from '../engine/growth';
 import { midParentalHeight } from '../engine/genetics';
@@ -96,7 +97,7 @@ function playUntilAge(state: GameState, targetAge: number) {
   let guard = 0;
   while (ageOf(s) < targetAge) {
     const previous = s.player.body.heightInches;
-    s = tick(s, []);
+    s = autoTick(s, []);
     if (s.careerEnd) s = { ...s, careerEnd: null };
     trace.push({
       age: ageOf(s),
@@ -415,9 +416,16 @@ describe('attributes (SPEC §5)', () => {
     );
   });
 
-  test('trainable attributes do not drift on their own before Phase 3', () => {
+  test('trainable attributes do not drift without training or events', () => {
+    // Raw `tick`, not the harness: once an event goes pending it is the event
+    // system moving these numbers, which is legitimate and Phase 7's business.
     const start = createGame(13, INPUT);
-    const { state } = playUntilAge(start, 200);
+    let state = start;
+    for (let i = 0; i < 24; i++) {
+      state = tick(state, []);
+      if (state.events.pending) break;
+    }
+
     for (const key of [...OFFENSE_KEYS, ...DEFENSE_KEYS, ...MENTAL_KEYS]) {
       expect(state.player.attributes[key], key).toBe(
         start.player.attributes[key],

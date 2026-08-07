@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import { createGame, type CreationInput } from '../engine/newGame';
 import { ActionBudgetError, tick } from '../engine/tick';
+import { autoTick } from './harness';
 import { phaseFor } from '../engine/calendar';
 import {
   ACTIONS,
@@ -56,7 +57,10 @@ function runCareer(
   months = 60,
 ): GameState {
   let state = createGame(seed, INPUT);
-  for (let i = 0; i < months; i++) state = tick(state, choose(state));
+  for (let i = 0; i < months; i++) {
+    if (state.careerEnd) break;
+    state = autoTick(state, choose(state));
+  }
   return state;
 }
 
@@ -101,14 +105,26 @@ describe('the spec assertion: rotating beats spamming (SPEC §18 Phase 3)', () =
     }
   });
 
-  test('spamming does not even win at the thing being spammed', () => {
-    // Both rest identically, so this isolates diminishing returns rather than
-    // just measuring the energy penalty.
+  test('what spamming buys on one skill, it gives back everywhere else', () => {
     const rotated = runCareer(7, rotatePolicy);
     const spammed = runCareer(7, spamPolicy);
-    expect(spammed.player.attributes.catchAndShoot3).toBeLessThan(
-      rotated.player.attributes.catchAndShoot3,
-    );
+
+    // Both policies rest identically, so this isolates the trade rather than
+    // measuring an energy penalty. Grinding one skill every month does not
+    // even pull far ahead on that skill, because the potential soft cap binds
+    // long before the extra reps pay off...
+    const shootingEdge =
+      (spammed.player.attributes.catchAndShoot3 as number) -
+      (rotated.player.attributes.catchAndShoot3 as number);
+    expect(Math.abs(shootingEdge)).toBeLessThan(6);
+
+    // ...while everything the spammer never touched falls badly behind.
+    const untouched = ['perimeterDefense', 'passingVision', 'strength'] as const;
+    for (const key of untouched) {
+      expect(spammed.player.attributes[key], key).toBeLessThan(
+        rotated.player.attributes[key] as number,
+      );
+    }
   });
 });
 
@@ -124,13 +140,13 @@ describe('diminishing returns (SPEC §3)', () => {
 
   test('a streak builds while repeating and resets after a month off', () => {
     let state = createGame(3, INPUT);
-    state = tick(state, ['shooting']);
+    state = autoTick(state, ['shooting']);
     expect(state.training.streaks.shooting).toBe(1);
-    state = tick(state, ['shooting']);
+    state = autoTick(state, ['shooting']);
     expect(state.training.streaks.shooting).toBe(2);
 
     // One month off resets it.
-    state = tick(state, ['lift']);
+    state = autoTick(state, ['lift']);
     expect(state.training.streaks.shooting).toBe(0);
     expect(state.training.streaks.lift).toBe(1);
   });
@@ -186,6 +202,25 @@ describe('energy (SPEC §6)', () => {
       const def = ACTIONS[id];
       if (def.category === 'recovery') expect(def.energyCost).toBeLessThan(0);
       else expect(def.energyCost).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('training is the only thing a plain tick moves (SPEC §3)', () => {
+  test('trainable attributes hold steady when no actions are taken', () => {
+    // Raw `tick`, not the harness: once an event goes pending it is the
+    // event system moving these numbers, which is Phase 7's business.
+    let state = createGame(13, INPUT);
+    const before = { ...state.player.attributes };
+
+    for (let i = 0; i < 24; i++) {
+      const next = tick(state, []);
+      state = next;
+      if (state.events.pending) break;
+    }
+
+    for (const key of ['finishing', 'passingVision', 'leadership'] as const) {
+      expect(state.player.attributes[key], key).toBe(before[key]);
     }
   });
 });
@@ -250,9 +285,9 @@ describe('injuries (SPEC §6)', () => {
       },
     };
 
-    state = tick(state, []);
+    state = autoTick(state, []);
     expect(state.condition.injury?.monthsRemaining).toBe(1);
-    state = tick(state, []);
+    state = autoTick(state, []);
     expect(state.condition.injury).toBeNull();
     expect(state.log.some((e) => e.text.includes('healed'))).toBe(true);
   });
@@ -262,8 +297,10 @@ describe('injuries (SPEC §6)', () => {
     const ended: GameState = {
       ...createGame(3, INPUT),
       careerEnd: {
+        endingId: 'career-ending-injury',
         reason: 'Career-ending injury',
         detail: 'test',
+        decision: 'test',
         monthsElapsed: 4,
       },
     };

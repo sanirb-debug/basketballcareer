@@ -11,6 +11,11 @@ import { bodyAtAge } from './growth';
 import { rollStartingAttributes } from './attributes';
 import { initialTrainingState } from './actions';
 import { schoolFor } from './school';
+import { initialAcademics } from './academics';
+import { initialRecruiting } from './recruiting';
+import { initialRelationships } from './relationships';
+import { designateRival, generateClass, playerRank, rankingScore } from './prospects';
+import { overallFor } from './attributes';
 import {
   SCHEMA_VERSION,
   type Clock,
@@ -95,6 +100,30 @@ export function createGame(
   };
 
   const school = schoolFor(input.schoolTier);
+  const academics = initialAcademics(rng);
+  const recruiting = initialRecruiting(rng);
+  const relationships = initialRelationships(origin.familyStructure);
+
+  // A 13-year-old starts with almost no hype: the class does not know he
+  // exists yet, which is what makes the climb up the board mean something.
+  const startingHype = clamp(rng.normal(8, 4), 0, 25);
+  const overall = overallFor(attributes, input.position);
+
+  const rawClass = generateClass(rng);
+  const prospects = designateRival(
+    rawClass,
+    rankingScore(overall, startingHype),
+    rng,
+  );
+
+  const playerEntry = {
+    name: input.name,
+    position: input.position,
+    homeState: input.homeState,
+    rating: overall,
+    hype: startingHype,
+  };
+  const nationalRank = playerRank(prospects, playerEntry);
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -120,6 +149,20 @@ export function createGame(
     condition: { energy: 100, injury: null },
     season: null,
     history: [],
+    academics,
+    reputation: { onCourt: 50, offCourt: 55 },
+    hype: {
+      hype: startingHype,
+      nationalRank,
+      previousRank: nationalRank,
+      aauTier: 'none',
+      campInvites: 0,
+    },
+    prospects,
+    relationships,
+    recruiting,
+    events: { pending: null, flags: {}, fired: [], decisions: [] },
+    money: origin.incomeTier === 'affluent' ? 1500 : origin.incomeTier === 'comfortable' ? 600 : 150,
     careerEnd: null,
     hidden: { genetics },
     log: [

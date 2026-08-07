@@ -1,7 +1,7 @@
 import type { RngState } from './rng';
 
 /** Bump when the shape of `GameState` changes in a way old saves can't satisfy. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type Position = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 export const POSITIONS: readonly Position[] = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -167,12 +167,35 @@ export const ACTION_IDS = [
   'film',
   'practice',
   'rest',
+  // Phase 4 — academics compete for the same points as training (SPEC §9).
+  'study',
+  'testPrep',
+  // Phase 5 — hype is its own currency (SPEC §7).
+  'mixtape',
+  'showcase',
+  // Phase 6 — recruiting (SPEC §10).
+  'visit',
+  // Phase 7 — life systems (SPEC §6).
+  'socialize',
+  'family',
+  'job',
 ] as const;
 
 export type ActionId = (typeof ACTION_IDS)[number];
 
-/** What the player submits with a month tick. */
-export type MonthAction = ActionId;
+/**
+ * What the player submits with a month tick.
+ *
+ * Most actions are just an id. A few — a recruiting visit, spending money on
+ * a circuit — need a target, so the object form carries one. The plain string
+ * stays valid so the common case reads cleanly.
+ */
+export type MonthAction = ActionId | { id: ActionId; target?: string };
+
+export interface NormalizedAction {
+  id: ActionId;
+  target: string | null;
+}
 
 export interface TrainingState {
   /**
@@ -265,6 +288,181 @@ export interface SeasonSummary {
   totals: BoxScore;
 }
 
+
+// --- Academics and eligibility (SPEC §9) ----------------------------------
+
+export type EligibilityStatus = 'qualifier' | 'academic-redshirt' | 'non-qualifier';
+
+export interface Academics {
+  /** 0.0–4.0, moved by Study and decayed by neglect. */
+  gpa: number;
+  /** NCAA core-course credits, tracked separately from GPA. 16 required. */
+  coreCredits: number;
+  /** 400–1600. Zero until the test is actually sat. */
+  testScore: number;
+  /** Times the test has been taken — each sitting keeps the best score. */
+  testAttempts: number;
+  status: EligibilityStatus;
+}
+
+// --- Reputation (SPEC §6) -------------------------------------------------
+
+/**
+ * Two axes that diverge on purpose: character gates which programs will
+ * recruit you, respect drives teammate and media reaction.
+ */
+export interface Reputation {
+  onCourt: number;
+  offCourt: number;
+}
+
+// --- Hype, the prospect class, and rankings (SPEC §7, §11) ----------------
+
+export type AauTier = 'none' | 'unaffiliated' | 'ua' | 'adidas' | 'nike';
+export const AAU_TIERS: readonly AauTier[] = [
+  'none',
+  'unaffiliated',
+  'ua',
+  'adidas',
+  'nike',
+];
+
+/** One of the ~400 other prospects in the class, on a lightweight sim. */
+export interface Prospect {
+  id: string;
+  name: string;
+  position: Position;
+  homeState: string;
+  /** True skill, hidden from the player. */
+  rating: number;
+  hype: number;
+  /** Per-month drift: some rise, some bust. */
+  trajectory: number;
+  isRival: boolean;
+}
+
+export interface RankedProspect {
+  id: string;
+  name: string;
+  position: Position;
+  homeState: string;
+  score: number;
+  rank: number;
+  isPlayer: boolean;
+  isRival: boolean;
+}
+
+export interface HypeState {
+  hype: number;
+  /** 1-based national ranking within the class. */
+  nationalRank: number;
+  /** Ranking a month ago, so the board can show movement. */
+  previousRank: number;
+  aauTier: AauTier;
+  campInvites: number;
+}
+
+// --- Relationships (SPEC §6) ----------------------------------------------
+
+export const RELATIONSHIP_IDS = [
+  'parents',
+  'friends',
+  'girlfriend',
+  'hsCoach',
+  'trainer',
+  'aauCoach',
+] as const;
+export type RelationshipId = (typeof RELATIONSHIP_IDS)[number];
+
+export interface Relationship {
+  level: number;
+  /** Whether this relationship exists yet — you have no girlfriend at 13. */
+  active: boolean;
+}
+
+export type Relationships = Record<RelationshipId, Relationship>;
+
+// --- Recruiting (SPEC §10) ------------------------------------------------
+
+export type ProgramTier =
+  | 'blueblood'
+  | 'high-major'
+  | 'mid-major'
+  | 'low-major'
+  | 'juco';
+
+export interface Program {
+  id: string;
+  name: string;
+  tier: ProgramTier;
+  /** National rank you must be inside for this program to offer. */
+  rankCutoff: number;
+  /** Minimum off-court character this staff will tolerate. */
+  characterFloor: number;
+  /** Academic standard — bluebloods still need you eligible. */
+  requiresQualifier: boolean;
+  state: string;
+}
+
+export interface Offer {
+  programId: string;
+  monthOffered: number;
+  /** Offers can be pulled if you fall off or blow up your character. */
+  active: boolean;
+  pulledReason: string | null;
+}
+
+export interface Commitment {
+  programId: string;
+  monthsElapsed: number;
+  /** True once signed on a signing day — a signature is much harder to undo. */
+  signed: boolean;
+}
+
+export interface RecruitingState {
+  /** Interest level 0–100 per program, moving month to month. */
+  interest: Record<string, number>;
+  /** The position each staff is recruiting this cycle (SPEC §10). */
+  needs: Record<string, Position>;
+  offers: Offer[];
+  commitment: Commitment | null;
+  decommits: number;
+  visitsThisCycle: number;
+  /** True once the player has signed and the recruitment is closed. */
+  signed: boolean;
+}
+
+// --- Events (SPEC §12) ----------------------------------------------------
+
+export interface PendingEvent {
+  eventId: string;
+  monthsElapsed: number;
+}
+
+export interface EventState {
+  /** Set by a tick, cleared by the player choosing. Blocks the next tick. */
+  pending: PendingEvent | null;
+  /** Flags set by choices, which later events can require or forbid. */
+  flags: Record<string, boolean>;
+  /** Event ids already fired, so one-shot events do not repeat. */
+  fired: string[];
+  /** Recent choices, for the career archive. */
+  decisions: { eventId: string; choice: string; monthsElapsed: number }[];
+}
+
+// --- Endings (SPEC §15) ---------------------------------------------------
+
+export type EndingId =
+  | 'career-ending-injury'
+  | 'academic-washout'
+  | 'no-offers'
+  | 'juco-grinder'
+  | 'low-major-signee'
+  | 'mid-major-signee'
+  | 'high-major-signee'
+  | 'blueblood-signee'
+  | 'off-court-flameout';
+
 // --- Player and state -----------------------------------------------------
 
 /** Ground-truth measurements. The 25–99 ratings are derived from these. */
@@ -293,7 +491,16 @@ export interface Clock {
   month: number;
 }
 
-export type LogKind = 'growth' | 'system' | 'game' | 'training' | 'injury' | 'coach';
+export type LogKind =
+  | 'growth'
+  | 'system'
+  | 'game'
+  | 'training'
+  | 'injury'
+  | 'coach'
+  | 'academics'
+  | 'hype'
+  | 'recruiting';
 
 export interface LogEntry {
   monthsElapsed: number;
@@ -303,10 +510,19 @@ export interface LogEntry {
   text: string;
 }
 
-/** Why a run ended (SPEC §15). Only the injury path exists this phase. */
+/**
+ * A named terminal state (SPEC §15).
+ *
+ * `decision` is the point of the whole screen: every run has to name the
+ * specific choice that broke it, not just report that it ended.
+ */
 export interface CareerEnd {
+  endingId: EndingId;
+  /** The ending's name, e.g. "Academic washout". */
   reason: string;
   detail: string;
+  /** The specific decision that led here. */
+  decision: string;
   monthsElapsed: number;
 }
 
@@ -331,6 +547,16 @@ export interface GameState {
   condition: ConditionState;
   season: SeasonState | null;
   history: SeasonSummary[];
+  academics: Academics;
+  reputation: Reputation;
+  hype: HypeState;
+  /** The ~400-prospect class the player is ranked inside (SPEC §11). */
+  prospects: Prospect[];
+  relationships: Relationships;
+  recruiting: RecruitingState;
+  events: EventState;
+  /** Dollars. Income from family and jobs; spent on camps and trainers. */
+  money: number;
   careerEnd: CareerEnd | null;
   /** Everything the player is not allowed to see. Stripped by `toPublicView`. */
   hidden: {

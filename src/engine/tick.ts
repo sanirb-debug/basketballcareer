@@ -2,24 +2,35 @@ import { clamp, createRng, type Rng } from './rng';
 import { absoluteMonth, advanceClock, ageInMonths, phaseFor } from './calendar';
 import { growOneMonth } from './growth';
 import { applyDerivedAttributes, overallFor } from './attributes';
-import { ACTIONS, TRAINING, applyActions } from './actions';
+import { ACTIONS, TRAINING, applyActions, normalizeActions } from './actions';
 import { advanceRehab, effectiveAttributes, rollInjury } from './condition';
 import { GAME_MINUTES, minutesFor, resolveGame } from './gameSim';
 import {
   advanceLeague,
   createSeason,
   gamesScheduledFor,
+  gradeForClock,
   gradeLabel,
   hasGraduated,
+  isSchoolYearEnd,
   seasonYearForClock,
   summarizeSeason,
 } from './season';
+import { advanceAcademics, isSchoolMonth } from './academics';
+import { advanceClass, playerRank } from './prospects';
+import { advanceHype, offeredAauTier } from './hype';
+import { exposureForState } from './origin';
+import { advanceRecruiting } from './recruiting';
+import { advanceRelationships, coachTrustBonus } from './relationships';
+import { selectEvent } from './events/engine';
+import { isSliceOver, resolveEnding } from './endings';
 import type {
   Attributes,
   GameRecord,
   GameState,
   LogEntry,
   MonthAction,
+  RelationshipId,
   SeasonState,
 } from './types';
 
@@ -33,31 +44,38 @@ import type {
  *
  * Sub-step order is deliberate and load-bearing:
  *
- *   validate → train → play games → injury roll → coach trust → season
- *   rollover → advance clock → rehab → growth → derived attributes
+ *   validate → train → academics → games → hype → class → recruiting →
+ *   relationships → injury → coach trust → season rollover → advance clock →
+ *   rehab → growth → derived attributes → raise event → check for the ending
  *
- * Two things about that order matter:
+ * Three things about that order matter:
  *
  * 1. Actions are charged against the month the player is *currently* in, and
- *    the clock advances at the very end. Advancing first would bill October's
+ *    the clock advances near the end. Advancing first would bill October's
  *    four offseason points against November's in-season two, so the screen
  *    would offer choices the engine then rejects.
  * 2. Training runs before games, so a month spent grinding leaves you tired
  *    for the games you then play — worse production and a higher injury roll.
- *    That is the tension SPEC §6 is built on; reordering quietly removes the
- *    cost of overtraining.
+ *    That is the tension SPEC §6 is built on.
+ * 3. Hype is computed from *this month's* games, and the class advances
+ *    immediately after, so the ranking the player sees already accounts for
+ *    what they just did and what everyone else did.
  */
 
-/** Growth below this is rounding noise, not worth a notification line. */
 const GROWTH_NOTIFICATION_THRESHOLD = 0.05;
-
-/** Energy burned per minute played. */
 const ENERGY_PER_MINUTE = 0.16;
+
+/** Monthly household support by income tier. */
+const MONTHLY_INCOME = {
+  low: 0,
+  modest: 70,
+  comfortable: 190,
+  affluent: 520,
+} as const;
 
 export const COACH_TRUST = {
   MIN: 0,
   MAX: 100,
-  /** How fast trust reverts toward the merit-implied baseline. */
   DRIFT: 0.06,
   PER_WIN: 0.8,
   PER_LOSS: -0.5,
@@ -66,16 +84,26 @@ export const COACH_TRUST = {
 } as const;
 
 export class ActionBudgetError extends Error {}
+export class UnresolvedEventError extends Error {}
 
 export function tick(state: GameState, actions: MonthAction[]): GameState {
-  // A career-ending injury stops the run (SPEC §15).
+  // A finished run is inert (SPEC §15).
   if (state.careerEnd) return state;
+
+  // An event raised last month has to be answered before time moves again.
+  if (state.events.pending) {
+    throw new UnresolvedEventError(
+      'An event is awaiting a choice — resolve it before ticking',
+    );
+  }
 
   const rng = createRng(state.rngState);
   const clock = state.clock;
   const phase = phaseFor(clock);
+  const grade = gradeForClock(clock);
 
-  validateActions(actions, phase.actionPoints);
+  const chosen = normalizeActions(actions);
+  validateActions(chosen, phase.actionPoints);
 
   const monthsElapsed = state.monthsElapsed + 1;
   const log: LogEntry[] = [];
@@ -83,6 +111,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     log.push({ monthsElapsed, year: clock.year, month: clock.month, kind, text });
 
   const ageNow = ageInMonths(clock, state.player.birthYear, state.player.birthMonth);
+  const count = (id: string) => chosen.filter((a) => a.id === id).length;
 
   // --- 1. Training -------------------------------------------------------
   const regenerated = clamp(
@@ -92,7 +121,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   );
 
   const applied = applyActions(
-    actions,
+    chosen.map((a) => a.id),
     state.player.attributes,
     state.training,
     {
@@ -107,7 +136,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
 
   let energy = applied.energy;
   let coachTrust = clamp(
-    state.coachTrust + applied.trustDelta,
+    state.coachTrust + applied.trustDelta + coachTrustBonus(state.relationships),
     COACH_TRUST.MIN,
     COACH_TRUST.MAX,
   );
@@ -117,7 +146,21 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     note('training', `The work is showing — ${labelFor(topGain.key)} is coming along.`);
   }
 
-  // --- 2. Games ----------------------------------------------------------
+  // --- 2. Academics (SPEC §9) -------------------------------------------
+  const academicResult = advanceAcademics(
+    {
+      academics: state.academics,
+      studyActions: count('study'),
+      testPrepActions: count('testPrep'),
+      inSchoolYear: isSchoolMonth(clock.month) && grade <= 12,
+      basketballIQ: applied.attributes.basketballIQ as number,
+      yearComplete: isSchoolYearEnd(clock) && grade <= 12,
+    },
+    rng,
+  );
+  for (const text of academicResult.notes) note('academics', text);
+
+  // --- 3. Games ----------------------------------------------------------
   const played = playMonth(rng, state, {
     clock,
     attributes: applied.attributes,
@@ -129,7 +172,106 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   let season = played.season;
   energy = played.energy;
 
-  // --- 3. Injury roll ----------------------------------------------------
+  // --- 4. Hype (SPEC §7) -------------------------------------------------
+  const hypeResult = advanceHype(
+    {
+      hype: state.hype.hype,
+      aauTier: state.hype.aauTier,
+      schoolExposure: state.school.exposureMultiplier,
+      stateExposure: exposureForState(state.origin.homeState),
+      pointsPerGame:
+        played.gamesPlayed > 0 ? played.points / played.gamesPlayed : 0,
+      gamesPlayed: played.gamesPlayed,
+      opponentStrength: played.averageOpponent,
+      mixtapeActions: count('mixtape'),
+      showcaseActions: count('showcase'),
+      livePeriod: phase.phase === 'LIVE_PERIOD',
+    },
+    rng,
+  );
+  for (const text of hypeResult.notes) note('hype', text);
+
+  // --- 5. The class moves whether you did anything or not (SPEC §11) -----
+  const prospects = advanceClass(state.prospects, rng);
+  const playerEntry = {
+    name: state.player.name,
+    position: state.player.position,
+    homeState: state.origin.homeState,
+    rating: overallFor(applied.attributes, state.player.position),
+    hype: hypeResult.hype,
+  };
+  const nationalRank = playerRank(prospects, playerEntry);
+
+  // Circuit placement is decided each spring (SPEC §7).
+  let aauTier = state.hype.aauTier;
+  if (clock.month === 3) {
+    const offered = offeredAauTier(
+      hypeResult.hype,
+      nationalRank,
+      state.origin.incomeTier,
+      state.money,
+    );
+    if (offered !== aauTier) {
+      aauTier = offered;
+      note('hype', `Spring circuit set: ${aauTier === 'none' ? 'no travel team this year' : aauTier.toUpperCase()}.`);
+    }
+  }
+
+  // --- 6. Recruiting (SPEC §10) -----------------------------------------
+  const visited = chosen
+    .filter((a) => a.id === 'visit' && a.target)
+    .map((a) => a.target as string);
+
+  const recruitingResult = advanceRecruiting(
+    state.recruiting,
+    {
+      nationalRank,
+      hype: hypeResult.hype,
+      position: state.player.position,
+      eligibility: academicResult.academics.status,
+      offCourt: state.reputation.offCourt,
+      onCourt: state.reputation.onCourt,
+      grade,
+      monthsElapsed,
+      visited,
+      homeState: state.origin.homeState,
+    },
+    rng,
+  );
+  for (const text of recruitingResult.notes) note('recruiting', text);
+
+  // --- 7. Relationships (SPEC §6) ---------------------------------------
+  const tended: RelationshipId[] = [];
+  for (let i = 0; i < count('socialize'); i++) {
+    tended.push('friends');
+    if (state.relationships.girlfriend.active) tended.push('girlfriend');
+  }
+  for (let i = 0; i < count('family'); i++) tended.push('parents');
+  if (played.gamesPlayed > 0) tended.push('hsCoach');
+
+  const relResult = advanceRelationships({
+    relationships: state.relationships,
+    tended,
+    boost: TRAINING.RELATIONSHIP_BOOST,
+  });
+  let relationships = relResult.relationships;
+  for (const text of relResult.notes) note('system', text);
+
+  // Joining a circuit puts an AAU coach in your life.
+  if (aauTier !== 'none' && !relationships.aauCoach.active) {
+    relationships = {
+      ...relationships,
+      aauCoach: { level: 55, active: true },
+    };
+  }
+
+  // --- 8. Money ----------------------------------------------------------
+  const money =
+    state.money +
+    MONTHLY_INCOME[state.origin.incomeTier] +
+    count('job') * TRAINING.JOB_INCOME;
+
+  // --- 9. Injury roll ----------------------------------------------------
   let injury = state.condition.injury;
   // Annotated because the early return above narrows the field to `null`.
   let careerEnd: GameState['careerEnd'] = state.careerEnd;
@@ -146,8 +288,12 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
       if (roll.careerEnding) {
         note('injury', `A ${roll.injury.name}. This one does not heal.`);
         careerEnd = {
+          endingId: 'career-ending-injury',
           reason: 'Career-ending injury',
-          detail: `A ${roll.injury.name} at ${Math.floor(ageNow / 12)}. The run just stops.`,
+          detail:
+            'The run just stops. No build-up, no warning, no second act.',
+          decision:
+            'One landing. Nothing you chose, and nothing you could have chosen differently.',
           monthsElapsed,
         };
       } else {
@@ -161,7 +307,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     }
   }
 
-  // --- 4. Coach trust ----------------------------------------------------
+  // --- 10. Coach trust ---------------------------------------------------
   coachTrust = updateCoachTrust(coachTrust, {
     startingTrust: state.school.startingTrust,
     coachability: applied.attributes.coachability as number,
@@ -173,7 +319,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
       injury !== null && played.gamesScheduled > 0 && played.gamesPlayed === 0,
   });
 
-  // --- 5. Season rollover (March, once every game is in the books) -------
+  // --- 11. Season rollover ----------------------------------------------
   let history = state.history;
   if (season && clock.month === 2 && season.schedule.every((g) => g.played)) {
     const summary = summarizeSeason(season, state.school.name);
@@ -187,7 +333,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     season = null;
   }
 
-  // --- 6. Advance the clock ---------------------------------------------
+  // --- 12. Advance the clock --------------------------------------------
   const nextClock = advanceClock(clock);
   const ageNext = ageInMonths(
     nextClock,
@@ -195,26 +341,24 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     state.player.birthMonth,
   );
 
-  // --- 7. Rehab ----------------------------------------------------------
+  // --- 13. Rehab ---------------------------------------------------------
   const healingFrom = injury;
   injury = advanceRehab(injury);
+  let eventFlags = state.events.flags;
   if (healingFrom && !injury) {
     note('injury', `Cleared to play — the ${healingFrom.name} has healed.`);
+    // Engine-set flag: unlocks the first-game-back event (SPEC §12 chaining).
+    eventFlags = { ...eventFlags, returned_from_injury: true };
   }
 
-  // --- 8. Growth ---------------------------------------------------------
-  const growth = growOneMonth(
-    state.player.body,
-    ageNext,
-    state.hidden.genetics,
-    rng,
-  );
+  // --- 14. Growth --------------------------------------------------------
+  const growth = growOneMonth(state.player.body, ageNext, state.hidden.genetics, rng);
   const grew = Math.round(growth.grewInches * 10) / 10;
   if (grew >= GROWTH_NOTIFICATION_THRESHOLD) {
     note('growth', `You grew ${grew.toFixed(1)} ${grew === 1 ? 'inch' : 'inches'}.`);
   }
 
-  // --- 9. Derived attributes --------------------------------------------
+  // --- 15. Derived attributes -------------------------------------------
   const attributes = applyDerivedAttributes(
     applied.attributes,
     state.hidden.genetics,
@@ -222,7 +366,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     growth.body,
   );
 
-  return {
+  let next: GameState = {
     ...state,
     rngState: rng.state(),
     clock: nextClock,
@@ -233,19 +377,76 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     condition: { energy, injury },
     season,
     history,
+    academics: academicResult.academics,
+    hype: {
+      hype: hypeResult.hype,
+      nationalRank,
+      previousRank: state.hype.nationalRank,
+      aauTier,
+      campInvites: state.hype.campInvites + count('showcase'),
+    },
+    prospects,
+    relationships,
+    recruiting: recruitingResult.recruiting,
+    events: { ...state.events, flags: eventFlags },
+    money,
     careerEnd,
     log: [...state.log, ...log],
   };
+
+  // --- 16. Raise an event (SPEC §12) ------------------------------------
+  if (!next.careerEnd) {
+    const event = selectEvent(next, rng);
+    if (event) {
+      next = {
+        ...next,
+        rngState: rng.state(),
+        events: {
+          ...next.events,
+          pending: { eventId: event.id, monthsElapsed },
+        },
+      };
+    } else {
+      next = { ...next, rngState: rng.state() };
+    }
+  }
+
+  // --- 17. Has the slice ended? (SPEC §15, §18) -------------------------
+  if (!next.careerEnd && isSliceOver(next)) {
+    const ending = resolveEnding(next);
+    next = {
+      ...next,
+      careerEnd: ending,
+      events: { ...next.events, pending: null },
+      log: [
+        ...next.log,
+        {
+          monthsElapsed,
+          year: nextClock.year,
+          month: nextClock.month,
+          kind: 'system',
+          text: `${ending.reason}. ${ending.detail}`,
+        },
+      ],
+    };
+  }
+
+  return next;
 }
 
-function validateActions(actions: MonthAction[], budget: number): void {
+function validateActions(
+  actions: { id: string }[],
+  budget: number,
+): void {
   if (actions.length > budget) {
     throw new ActionBudgetError(
       `Too many actions for this month: ${actions.length} chosen, ${budget} available`,
     );
   }
-  for (const id of actions) {
-    if (!ACTIONS[id]) throw new ActionBudgetError(`Unknown action: ${id}`);
+  for (const action of actions) {
+    if (!ACTIONS[action.id as keyof typeof ACTIONS]) {
+      throw new ActionBudgetError(`Unknown action: ${action.id}`);
+    }
   }
 }
 
@@ -266,16 +467,13 @@ interface PlayResult {
   points: number;
   gamesPlayed: number;
   gamesScheduled: number;
+  averageOpponent: number;
 }
 
-/** Resolve every game scheduled for the month the player is currently in. */
 function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
   const seasonYear = seasonYearForClock(ctx.clock);
   let season = state.season;
 
-  // Open a season lazily the first in-season month we see. Doing it here
-  // rather than on a November edge means a save loaded mid-season still
-  // finds its schedule.
   if (
     seasonYear !== null &&
     !hasGraduated(seasonYear) &&
@@ -297,6 +495,7 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
     points: 0,
     gamesPlayed: 0,
     gamesScheduled: 0,
+    averageOpponent: 50,
   };
 
   if (!season || seasonYear === null || season.seasonYear !== seasonYear) return idle;
@@ -315,13 +514,13 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
   let losses = 0;
   let points = 0;
   let gamesPlayed = 0;
+  let opponentTotal = 0;
   let eliminated = season.eliminated;
   let playoffWins = season.playoffWins;
 
   const resolved = new Map<string, GameRecord>();
 
   for (const game of scheduled) {
-    // Postseason is single elimination — once you're out, you're out.
     if (game.playoff && eliminated) {
       resolved.set(game.id, { ...game, played: true, note: 'Season over' });
       continue;
@@ -356,6 +555,7 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
     if (minutes > 0) {
       minutesLoad += minutes;
       points += outcome.box.points;
+      opponentTotal += game.opponentStrength;
       gamesPlayed++;
       energy = clamp(
         energy - minutes * ENERGY_PER_MINUTE,
@@ -401,6 +601,7 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
     points,
     gamesPlayed,
     gamesScheduled: scheduled.length,
+    averageOpponent: gamesPlayed > 0 ? opponentTotal / gamesPlayed : 50,
   };
 }
 
@@ -414,11 +615,6 @@ interface TrustContext {
   injuredAllMonth: boolean;
 }
 
-/**
- * Coach trust (SPEC §6): raised by coachability, practice attendance and
- * winning; lowered by missed obligations. Practice attendance is folded in
- * upstream via each action's `trustDelta`.
- */
 function updateCoachTrust(current: number, ctx: TrustContext): number {
   const baseline = clamp(
     ctx.startingTrust + (ctx.coachability - 50) * 0.35,
@@ -441,11 +637,29 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** Turn an attribute key into something readable in a log line. */
+const ATTRIBUTE_LABELS: Record<string, string> = {
+  catchAndShoot3: 'catch-and-shoot three',
+  offDribble3: 'off-the-dribble three',
+  basketballIQ: 'basketball IQ',
+  offBallMovement: 'off-ball movement',
+  passingVision: 'court vision',
+  defensiveRebounding: 'defensive rebounding',
+  offensiveRebounding: 'offensive rebounding',
+  perimeterDefense: 'perimeter defense',
+  interiorDefense: 'interior defense',
+  postGame: 'post game',
+  midRange: 'mid-range',
+  freeThrow: 'free throw shooting',
+  ballHandling: 'ball handling',
+};
+
 function labelFor(key: string): string {
-  return key.replace(/([A-Z])/g, ' $1').toLowerCase().trim();
+  return (
+    ATTRIBUTE_LABELS[key] ?? key.replace(/([A-Z])/g, ' $1').toLowerCase().trim()
+  );
 }
 
-/** Log lines produced by the most recent tick, for the month screen. */
 export function latestLog(state: GameState): LogEntry[] {
   return state.log.filter((e) => e.monthsElapsed === state.monthsElapsed);
 }
@@ -457,10 +671,6 @@ export function latestGrowthNote(state: GameState): string | null {
 
 export { GAME_MINUTES };
 
-/**
- * Recursively freeze a state tree so accidental mutation throws in strict mode
- * instead of silently corrupting a run. DEV only — the walk is not free.
- */
 export function deepFreeze<T>(value: T): T {
   if (value === null || typeof value !== 'object') return value;
   if (Object.isFrozen(value)) return value;

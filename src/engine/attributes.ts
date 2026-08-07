@@ -327,8 +327,19 @@ export function applyDerivedAttributes(
   next.frame = frameRating(ageMonths, g);
   next.durability = durabilityRating(g.injuryProneness);
 
+  // Maturation sets a *floor*, not the value.
+  //
+  // Overwriting outright would silently erase every gain from the weight room
+  // and conditioning, because those train exactly these five attributes — the
+  // work would appear to land and then vanish on the same tick. Taking the max
+  // means the body matures to a genetic baseline on its own and training
+  // carries you above it.
   for (const key of MATURING_ATTRIBUTE_KEYS) {
-    next[key] = maturingValue(key, g, ageMonths);
+    // On the very first call these keys do not exist yet — creation rolls only
+    // the trainable attributes and leans on this pass to fill the rest in.
+    const current = next[key];
+    const trained = typeof current === 'number' ? current : ATTR_MIN;
+    next[key] = Math.max(trained, maturingValue(key, g, ageMonths));
   }
 
   return next;

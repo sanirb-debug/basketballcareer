@@ -19,7 +19,17 @@ import type {
  */
 
 export const FIRST_SEASON_YEAR = START_YEAR;
-export const FIRST_GRADE = 9;
+/**
+ * The run opens in 8th grade.
+ *
+ * SPEC §18 sets the slice at "ages 13 → 18, ending on signing day", which is
+ * ~60 months. Starting a 13-year-old as a freshman would graduate him at 17
+ * and end the slice around month 45; starting him in 8th grade puts signing
+ * day in the senior year at month 51 (early period) or 56 (late), which is
+ * what the spec describes. School choice at 13 also makes more sense as a
+ * decision about where you are *going* than where you already are.
+ */
+export const FIRST_GRADE = 8;
 export const FINAL_GRADE = 12;
 export const GAMES_PER_MONTH = 6;
 export const REGULAR_SEASON_MONTHS = [10, 11, 0, 1] as const; // Nov, Dec, Jan, Feb
@@ -81,8 +91,28 @@ export function isSeasonOpener(clock: Clock): boolean {
   return clock.month === 10;
 }
 
+/**
+ * The academic year a month belongs to, running Aug–Jul so that a grade
+ * spans the whole basketball calendar rather than splitting at New Year.
+ */
+export function academicYearFor(clock: Clock): number {
+  return clock.month >= 7 ? clock.year : clock.year - 1;
+}
+
+/** Grade the player is in during a given month, 9 through 12 (then beyond). */
+export function gradeForClock(clock: Clock): number {
+  return gradeForSeason(academicYearFor(clock));
+}
+
+/** True on the month a school year completes, when core credits are awarded. */
+export function isSchoolYearEnd(clock: Clock): boolean {
+  return clock.month === 4; // May
+}
+
 export function gradeLabel(grade: number): string {
   switch (grade) {
+    case 8:
+      return '8th grade';
     case 9:
       return 'Freshman';
     case 10:

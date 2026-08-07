@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createGame, type CreationInput } from '../engine/newGame';
 import { deepFreeze, tick } from '../engine/tick';
+import { autoTick } from './harness';
 import { createRng, hashSeedString, seedToState } from '../engine/rng';
 import { SCHEMA_VERSION, type GameState, type MonthAction } from '../engine/types';
 import { SLOT_IDS, type SlotId } from '../save/db';
@@ -35,11 +36,26 @@ const INPUT: CreationInput = {
   schoolTier: 'public',
 };
 
+/**
+ * Events pause the clock until they are answered, so automated runs answer
+ * them with a fixed policy. See `harness.ts`.
+ */
 function tickMonths(state: GameState, months: number): GameState {
   let next = state;
-  for (let i = 0; i < months; i++) next = tick(next, []);
+  for (let i = 0; i < months; i++) {
+    if (next.careerEnd) break;
+    next = autoTick(next, []);
+  }
   return next;
 }
+
+/**
+ * A horizon comfortably inside the high school slice.
+ *
+ * The slice ends on signing day around month 57, after which ticks are no-ops
+ * by design — so continuation tests use a shorter run to stay meaningful.
+ */
+const MID_RUN_MONTHS = 36;
 
 beforeEach(async () => {
   for (const slot of SLOT_IDS) await deleteSlot(slot);
@@ -131,12 +147,12 @@ describe('month tick engine (SPEC §16.3)', () => {
     expect(() => tick(state, bogus)).toThrow(/Unknown action/);
   });
 
-  test('rolls the calendar over correctly across 60 months', () => {
+  test('rolls the calendar over correctly across a long run', () => {
     const state = createGame(SEED, INPUT);
-    const after = tickMonths(state, 60);
-    // Starts August 2026; 60 months later is August 2031.
-    expect(after.clock).toEqual({ year: 2031, month: 7 });
-    expect(after.monthsElapsed).toBe(60);
+    const after = tickMonths(state, MID_RUN_MONTHS);
+    // Starts August 2026; 36 months later is August 2029.
+    expect(after.clock).toEqual({ year: 2029, month: 7 });
+    expect(after.monthsElapsed).toBe(MID_RUN_MONTHS);
   });
 
   test('deepFreeze makes accidental mutation throw', () => {
@@ -164,7 +180,9 @@ describe('save / reload (SPEC §16.1)', () => {
   });
 
   test('a reloaded save continues the run identically', async () => {
-    const played = tickMonths(createGame(SEED, INPUT), 60);
+    // Deliberately mid-run: after the slice ends, ticks are no-ops and a
+    // continuation test would pass without proving anything.
+    const played = tickMonths(createGame(SEED, INPUT), MID_RUN_MONTHS);
     await saveToSlot(0, played);
     const reloaded = await loadFromSlot(0);
     if (!reloaded) throw new Error('expected a save');
@@ -178,7 +196,8 @@ describe('save / reload (SPEC §16.1)', () => {
     let state = createGame(SEED, INPUT);
     await saveToSlot(1, state);
     for (let i = 0; i < 60; i++) {
-      state = tick(state, []);
+      if (state.careerEnd) break;
+      state = autoTick(state, []);
       await saveToSlot(1, state);
     }
     expect(await loadFromSlot(1)).toEqual(state);

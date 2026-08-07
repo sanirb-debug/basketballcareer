@@ -5,8 +5,19 @@ import {
   type ActionId,
   type AttributeKey,
   type Attributes,
+  type MonthAction,
+  type NormalizedAction,
   type TrainingState,
 } from './types';
+
+/** Accept both the plain-string and targeted forms of a submitted action. */
+export function normalizeActions(actions: MonthAction[]): NormalizedAction[] {
+  return actions.map((a) =>
+    typeof a === 'string'
+      ? { id: a, target: null }
+      : { id: a.id, target: a.target ?? null },
+  );
+}
 
 /**
  * Action points and training (SPEC §3, §6).
@@ -25,7 +36,7 @@ export interface ActionDef {
   id: ActionId;
   label: string;
   description: string;
-  category: 'training' | 'recovery' | 'team';
+  category: 'training' | 'recovery' | 'team' | 'academic' | 'exposure' | 'life';
   /** Energy spent. Recovery actions use a negative cost to restore. */
   energyCost: number;
   trains: TrainedAttribute[];
@@ -163,6 +174,79 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
     trains: [],
     trustDelta: -1,
   },
+  study: {
+    id: 'study',
+    label: 'Study',
+    description:
+      'Hit the books. Costs exactly what a training session costs — that is the whole design.',
+    category: 'academic',
+    energyCost: 10,
+    trains: [{ key: 'basketballIQ', weight: 0.2 }],
+    trustDelta: 0,
+  },
+  testPrep: {
+    id: 'testPrep',
+    label: 'Test prep',
+    description: 'Sit the SAT. A qualifying score is not optional if you want D1.',
+    category: 'academic',
+    energyCost: 12,
+    trains: [{ key: 'basketballIQ', weight: 0.15 }],
+    trustDelta: 0,
+  },
+  mixtape: {
+    id: 'mixtape',
+    label: 'Post a mixtape',
+    description: 'Cut your highlights and put them out. One viral clip beats three good games.',
+    category: 'exposure',
+    energyCost: 8,
+    trains: [],
+    trustDelta: -1,
+  },
+  showcase: {
+    id: 'showcase',
+    label: 'Camp / showcase',
+    description: 'Play in front of the people who make lists. Costs money and legs.',
+    category: 'exposure',
+    energyCost: 20,
+    trains: [{ key: 'composure', weight: 0.3 }],
+    trustDelta: 0,
+  },
+  visit: {
+    id: 'visit',
+    label: 'Campus visit',
+    description: 'Go see a program. Raises their interest more than any phone call.',
+    category: 'exposure',
+    energyCost: 6,
+    trains: [],
+    trustDelta: 0,
+  },
+  socialize: {
+    id: 'socialize',
+    label: 'See your people',
+    description: 'Friends, and whoever else matters. Relationships decay if you never show up.',
+    category: 'life',
+    energyCost: 4,
+    trains: [],
+    trustDelta: 0,
+  },
+  family: {
+    id: 'family',
+    label: 'Family time',
+    description: 'Be at home and be present for it.',
+    category: 'life',
+    energyCost: 3,
+    trains: [],
+    trustDelta: 0,
+  },
+  job: {
+    id: 'job',
+    label: 'Work a shift',
+    description: 'Money in your pocket and your family’s. Hours you will not get back.',
+    category: 'life',
+    energyCost: 20,
+    trains: [{ key: 'strength', weight: 0.15 }],
+    trustDelta: 0,
+  },
 };
 
 export const TRAINING = {
@@ -183,6 +267,10 @@ export const TRAINING = {
 
   /** Natural energy recovery each month, before actions. */
   PASSIVE_ENERGY_REGEN: 9,
+  /** Dollars earned per Work a shift action. */
+  JOB_INCOME: 420,
+  /** Relationship points per tending action. */
+  RELATIONSHIP_BOOST: 11,
   ENERGY_MIN: 0,
   ENERGY_MAX: 100,
 } as const;
