@@ -45,6 +45,7 @@ const INPUT: CreationInput = {
   handedness: 'right',
   homeCity: 'Gary',
   homeState: 'Indiana',
+  schoolTier: 'public',
 };
 
 /** Age 19y0m — the age the spec's assertion is about. */
@@ -78,6 +79,17 @@ interface TraceRow {
   weight: number;
 }
 
+/**
+ * Tick to a target age, isolating the growth curve from Phase 3's injury
+ * system.
+ *
+ * A career-ending injury stops the run for good, which is correct game
+ * behaviour but would freeze the clock partway through a growth trace and make
+ * these assertions fail for a reason that has nothing to do with growth. The
+ * roll is rare (~1% a run) but certain to hit across the seed sweeps below, so
+ * the helper clears it and keeps ageing the player. Phase 3 tests the injury
+ * path on its own terms.
+ */
 function playUntilAge(state: GameState, targetAge: number) {
   const trace: TraceRow[] = [];
   let s = state;
@@ -85,6 +97,7 @@ function playUntilAge(state: GameState, targetAge: number) {
   while (ageOf(s) < targetAge) {
     const previous = s.player.body.heightInches;
     s = tick(s, []);
+    if (s.careerEnd) s = { ...s, careerEnd: null };
     trace.push({
       age: ageOf(s),
       height: s.player.body.heightInches,

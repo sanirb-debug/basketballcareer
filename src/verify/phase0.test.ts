@@ -32,6 +32,7 @@ const INPUT: CreationInput = {
   handedness: 'right',
   homeCity: 'Gary',
   homeState: 'Indiana',
+  schoolTier: 'public',
 };
 
 function tickMonths(state: GameState, months: number): GameState {
@@ -117,10 +118,17 @@ describe('month tick engine (SPEC §16.3)', () => {
     expect(next.rngState.calls).toBeGreaterThan(state.rngState.calls);
   });
 
-  test('rejects actions rather than silently dropping them', () => {
+  test('rejects more actions than the month affords', () => {
     const state = createGame(SEED, INPUT);
-    const bogus = [1] as unknown as MonthAction[];
-    expect(() => tick(state, bogus)).toThrow(/Phase 3/);
+    // September is offseason: 4 action points, so a fifth is a caller bug.
+    const tooMany: MonthAction[] = ['lift', 'lift', 'lift', 'lift', 'lift'];
+    expect(() => tick(state, tooMany)).toThrow(/Too many actions/);
+  });
+
+  test('rejects an unknown action rather than silently dropping it', () => {
+    const state = createGame(SEED, INPUT);
+    const bogus = ['nap'] as unknown as MonthAction[];
+    expect(() => tick(state, bogus)).toThrow(/Unknown action/);
   });
 
   test('rolls the calendar over correctly across 60 months', () => {

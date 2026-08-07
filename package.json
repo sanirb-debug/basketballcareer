@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "verify:phase0": "vitest run src/verify/phase0.test.ts",
-    "verify:phase1": "vitest run src/verify/phase1.test.ts"
+    "verify:phase1": "vitest run src/verify/phase1.test.ts",
+    "verify:phase2": "vitest run src/verify/phase2.test.ts",
+    "verify:phase3": "vitest run src/verify/phase3.test.ts"
   },
   "dependencies": {
     "idb": "8.0.3",

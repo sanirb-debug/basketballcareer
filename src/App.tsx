@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createGame, randomSeed, type CreationInput } from './engine/newGame';
-import { deepFreeze, latestGrowthNote, tick } from './engine/tick';
+import { deepFreeze, latestLog, tick } from './engine/tick';
 import { toPublicView } from './engine/selectors';
 import { hashSeedString } from './engine/rng';
-import type { GameState } from './engine/types';
+import { phaseFor } from './engine/calendar';
+import type { ActionId, GameState } from './engine/types';
 import type { SlotId } from './save/db';
 import {
   deleteSlot,
@@ -16,6 +17,7 @@ import SlotPicker from './ui/SlotPicker';
 import CharacterCreation from './ui/CharacterCreation';
 import MonthScreen from './ui/MonthScreen';
 import DebugPanel from './ui/DebugPanel';
+import CareerEndScreen from './ui/CareerEndScreen';
 
 type Screen = 'slots' | 'create' | 'month';
 
@@ -29,6 +31,7 @@ export default function App() {
   const [slots, setSlots] = useState<SlotSummary[]>([]);
   const [activeSlot, setActiveSlot] = useState<SlotId>(0);
   const [state, setState] = useState<GameState | null>(null);
+  const [chosen, setChosen] = useState<ActionId[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,14 +47,19 @@ export default function App() {
     void refreshSlots();
   }, [refreshSlots]);
 
+  const openRun = (loaded: GameState, slot: SlotId) => {
+    setActiveSlot(slot);
+    setState(guard(loaded));
+    setChosen([]);
+    setScreen('month');
+  };
+
   const handleContinue = async (slot: SlotId) => {
     setError(null);
     try {
       const loaded = await loadFromSlot(slot);
       if (!loaded) return;
-      setActiveSlot(slot);
-      setState(guard(loaded));
-      setScreen('month');
+      openRun(loaded, slot);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -63,8 +71,7 @@ export default function App() {
     const created = createGame(seed, input);
     try {
       await saveToSlot(activeSlot, created);
-      setState(guard(created));
-      setScreen('month');
+      openRun(created, activeSlot);
       void refreshSlots();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -76,10 +83,11 @@ export default function App() {
     if (!state || saving) return;
     setSaving(true);
     setError(null);
-    const next = tick(state, []);
     try {
+      const next = tick(state, chosen);
       await saveToSlot(activeSlot, next);
       setState(guard(next));
+      setChosen([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -89,6 +97,7 @@ export default function App() {
 
   const handleExit = () => {
     setState(null);
+    setChosen([]);
     setScreen('slots');
     void refreshSlots();
   };
@@ -97,6 +106,11 @@ export default function App() {
     await deleteSlot(slot);
     void refreshSlots();
   };
+
+  // Trim any selection that no longer fits — the budget shrinks from four to
+  // two the moment the season opens.
+  const budget = state ? phaseFor(state.clock).actionPoints : 0;
+  const fitted = chosen.length > budget ? chosen.slice(0, budget) : chosen;
 
   return (
     <main className="min-h-screen">
@@ -128,13 +142,20 @@ export default function App() {
 
       {screen === 'month' && state && (
         <>
-          <MonthScreen
-            view={toPublicView(state)}
-            growthNote={latestGrowthNote(state)}
-            saving={saving}
-            onNextMonth={handleNextMonth}
-            onExit={handleExit}
-          />
+          {state.careerEnd ? (
+            <CareerEndScreen view={toPublicView(state)} onExit={handleExit} />
+          ) : (
+            <MonthScreen
+              view={toPublicView(state)}
+              training={state.training}
+              chosen={fitted}
+              monthLog={latestLog(state)}
+              saving={saving}
+              onChange={setChosen}
+              onNextMonth={handleNextMonth}
+              onExit={handleExit}
+            />
+          )}
           {import.meta.env.DEV && <DebugPanel state={state} />}
         </>
       )}

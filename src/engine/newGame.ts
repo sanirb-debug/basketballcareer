@@ -9,6 +9,8 @@ import { rollOrigin } from './origin';
 import { rollGenetics } from './genetics';
 import { bodyAtAge } from './growth';
 import { rollStartingAttributes } from './attributes';
+import { initialTrainingState } from './actions';
+import { schoolFor } from './school';
 import {
   SCHEMA_VERSION,
   type Clock,
@@ -16,6 +18,7 @@ import {
   type Genetics,
   type Handedness,
   type Position,
+  type SchoolTier,
 } from './types';
 
 export interface CreationInput {
@@ -25,6 +28,7 @@ export interface CreationInput {
   handedness: Handedness;
   homeCity: string;
   homeState: string;
+  schoolTier: SchoolTier;
 }
 
 /**
@@ -90,6 +94,8 @@ export function createGame(
     confidence: 50,
   };
 
+  const school = schoolFor(input.schoolTier);
+
   return {
     schemaVersion: SCHEMA_VERSION,
     seed,
@@ -108,6 +114,13 @@ export function createGame(
       hiddenMeta,
     },
     origin,
+    school,
+    coachTrust: school.startingTrust,
+    training: initialTrainingState(),
+    condition: { energy: 100, injury: null },
+    season: null,
+    history: [],
+    careerEnd: null,
     hidden: { genetics },
     log: [
       {
@@ -115,7 +128,7 @@ export function createGame(
         year: clock.year,
         month: clock.month,
         kind: 'system',
-        text: `${input.name} starts out in ${input.homeCity}, ${input.homeState}.`,
+        text: `${input.name} starts out in ${input.homeCity}, ${input.homeState}, headed to ${school.name}.`,
       },
     ],
   };

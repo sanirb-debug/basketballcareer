@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { SELECTABLE_STATES } from '../engine/origin';
-import { POSITIONS, type Handedness, type Position } from '../engine/types';
+import { SCHOOLS, SCHOOL_TIERS } from '../engine/school';
+import {
+  POSITIONS,
+  type Handedness,
+  type Position,
+  type SchoolTier,
+} from '../engine/types';
 import type { CreationInput } from '../engine/newGame';
 
 interface Props {
@@ -21,6 +27,7 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
   const [handedness, setHandedness] = useState<Handedness>('right');
   const [homeCity, setHomeCity] = useState('');
   const [homeState, setHomeState] = useState('Indiana');
+  const [schoolTier, setSchoolTier] = useState<SchoolTier>('public');
   const [seedText, setSeedText] = useState('');
 
   const canSubmit = name.trim().length > 0 && homeCity.trim().length > 0;
@@ -36,13 +43,14 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
         handedness,
         homeCity: homeCity.trim(),
         homeState,
+        schoolTier,
       },
       seedText.trim(),
     );
   };
 
   return (
-    <form onSubmit={submit} className="mx-auto max-w-3xl px-8 py-16">
+    <form onSubmit={submit} className="mx-auto max-w-3xl px-8 py-14">
       <div className="text-xs uppercase tracking-widest text-neutral-500">
         Slot {slot + 1}
       </div>
@@ -145,22 +153,65 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
             onChange={(e) => setHomeCity(e.target.value)}
           />
         </div>
+      </div>
 
-        <div className="col-span-2">
-          <label className={labelClass} htmlFor="seed">
-            Seed <span className="normal-case">(optional)</span>
-          </label>
-          <input
-            id="seed"
-            className={fieldClass}
-            value={seedText}
-            onChange={(e) => setSeedText(e.target.value)}
-            placeholder="Leave blank for a random seed"
-          />
-          <p className="mt-2 text-sm text-neutral-500">
-            The same seed always reproduces the same career, down to the month.
-          </p>
-        </div>
+      <h2 className="mt-12 text-xs font-medium uppercase tracking-widest text-neutral-500">
+        Where do you play?
+      </h2>
+      <p className="mt-1 text-sm text-neutral-500">
+        This is the real decision. Exposure and playing time pull against each
+        other.
+      </p>
+
+      <div className="mt-4 space-y-3">
+        {SCHOOL_TIERS.map((tier) => {
+          const school = SCHOOLS[tier];
+          const selected = schoolTier === tier;
+          return (
+            <button
+              key={tier}
+              type="button"
+              onClick={() => setSchoolTier(tier)}
+              className={`block w-full rounded-lg border px-5 py-4 text-left transition ${
+                selected
+                  ? 'border-orange-600 bg-orange-950/25'
+                  : 'border-neutral-800 bg-neutral-900/40 hover:border-neutral-600'
+              }`}
+            >
+              <div className="flex items-baseline justify-between gap-4">
+                <span className="font-medium text-neutral-100">{school.name}</span>
+                <span className="shrink-0 text-xs uppercase tracking-widest text-neutral-500">
+                  {tier}
+                </span>
+              </div>
+              <p className="mt-1.5 text-sm leading-snug text-neutral-400">
+                {school.blurb}
+              </p>
+              <div className="mt-3 flex gap-5 text-xs tabular-nums text-neutral-500">
+                <span>Exposure ×{school.exposureMultiplier.toFixed(2)}</span>
+                <span>Coaching {school.coachQuality}</span>
+                <span>Roster depth {school.rosterDepth}</span>
+                <span>Starting trust {school.startingTrust}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-10">
+        <label className={labelClass} htmlFor="seed">
+          Seed <span className="normal-case">(optional)</span>
+        </label>
+        <input
+          id="seed"
+          className={fieldClass}
+          value={seedText}
+          onChange={(e) => setSeedText(e.target.value)}
+          placeholder="Leave blank for a random seed"
+        />
+        <p className="mt-2 text-sm text-neutral-500">
+          The same seed always reproduces the same career, down to the month.
+        </p>
       </div>
 
       <div className="mt-10 flex gap-3">

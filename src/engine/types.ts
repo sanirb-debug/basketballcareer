@@ -1,7 +1,7 @@
 import type { RngState } from './rng';
 
 /** Bump when the shape of `GameState` changes in a way old saves can't satisfy. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type Position = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 export const POSITIONS: readonly Position[] = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -120,12 +120,6 @@ export interface Genetics {
 
 // --- Origin (SPEC §4) -----------------------------------------------------
 
-/**
- * Rolled and persisted at creation. Only `fatherHeightInches` /
- * `motherHeightInches` are read this phase — they feed the genetic roll.
- * Income, location, and family structure gate real mechanics in Phase 3/5;
- * they are stored now purely so that arriving doesn't need a save migration.
- */
 export interface Origin {
   homeCity: string;
   homeState: string;
@@ -136,6 +130,139 @@ export interface Origin {
   motherHeightInches: number;
   /** Stored for Phase 5's hype math. Nothing reads it yet. */
   exposureMultiplier: number;
+}
+
+// --- School (SPEC §8) -----------------------------------------------------
+
+export type SchoolTier = 'powerhouse' | 'public' | 'prep';
+
+export interface School {
+  tier: SchoolTier;
+  name: string;
+  blurb: string;
+  /** How good your teammates are, 25–99. Drives team scoring. */
+  teamStrength: number;
+  /** The bar you must clear for minutes. High means you sit as a freshman. */
+  rosterDepth: number;
+  /** Scout attention. Stored for Phase 5 hype; shown as flavor for now. */
+  exposureMultiplier: number;
+  /** Modifies training gains and how fast coach trust builds. */
+  coachQuality: number;
+  /** Average opponent strength on the schedule. */
+  scheduleStrength: number;
+  /** Coach trust you walk in the door with. */
+  startingTrust: number;
+}
+
+// --- Actions and training (SPEC §3, §6) -----------------------------------
+
+export const ACTION_IDS = [
+  'lift',
+  'conditioning',
+  'shooting',
+  'handles',
+  'finishing',
+  'defense',
+  'playmaking',
+  'film',
+  'practice',
+  'rest',
+] as const;
+
+export type ActionId = (typeof ACTION_IDS)[number];
+
+/** What the player submits with a month tick. */
+export type MonthAction = ActionId;
+
+export interface TrainingState {
+  /**
+   * Consecutive months each action has been taken. Drives the diminishing
+   * returns curve in SPEC §3 and resets to 0 after a month off.
+   */
+  streaks: Record<ActionId, number>;
+}
+
+// --- Condition: energy and injuries (SPEC §6) -----------------------------
+
+export type InjurySeverity = 'minor' | 'moderate' | 'major';
+
+export interface Injury {
+  name: string;
+  severity: InjurySeverity;
+  monthsRemaining: number;
+  /** Temporary multiplier on attributes until fully healed. */
+  attributeCap: number;
+}
+
+export interface ConditionState {
+  /** 0–100. Training drains it, rest restores it. */
+  energy: number;
+  injury: Injury | null;
+}
+
+// --- Season and games (SPEC §13) ------------------------------------------
+
+export interface BoxScore {
+  minutes: number;
+  points: number;
+  rebounds: number;
+  offRebounds: number;
+  assists: number;
+  steals: number;
+  blocks: number;
+  turnovers: number;
+  fgm: number;
+  fga: number;
+  tpm: number;
+  tpa: number;
+  ftm: number;
+  fta: number;
+}
+
+export interface GameRecord {
+  id: string;
+  /** Absolute month index the game is scheduled in. */
+  monthAbs: number;
+  opponent: string;
+  opponentStrength: number;
+  home: boolean;
+  playoff: boolean;
+  played: boolean;
+  teamScore: number;
+  oppScore: number;
+  win: boolean;
+  box: BoxScore;
+  /** Set when the player was unavailable, e.g. injured. */
+  note: string | null;
+}
+
+export interface LeagueTeam {
+  name: string;
+  strength: number;
+  wins: number;
+  losses: number;
+}
+
+export interface SeasonState {
+  /** The calendar year the season starts in: 2026 means the 2026-27 season. */
+  seasonYear: number;
+  grade: number;
+  schedule: GameRecord[];
+  wins: number;
+  losses: number;
+  league: LeagueTeam[];
+  eliminated: boolean;
+  playoffWins: number;
+}
+
+export interface SeasonSummary {
+  seasonYear: number;
+  grade: number;
+  schoolName: string;
+  games: number;
+  wins: number;
+  losses: number;
+  totals: BoxScore;
 }
 
 // --- Player and state -----------------------------------------------------
@@ -166,7 +293,7 @@ export interface Clock {
   month: number;
 }
 
-export type LogKind = 'growth' | 'system';
+export type LogKind = 'growth' | 'system' | 'game' | 'training' | 'injury' | 'coach';
 
 export interface LogEntry {
   monthsElapsed: number;
@@ -174,6 +301,13 @@ export interface LogEntry {
   month: number;
   kind: LogKind;
   text: string;
+}
+
+/** Why a run ended (SPEC §15). Only the injury path exists this phase. */
+export interface CareerEnd {
+  reason: string;
+  detail: string;
+  monthsElapsed: number;
 }
 
 /**
@@ -191,16 +325,16 @@ export interface GameState {
   monthsElapsed: number;
   player: Player;
   origin: Origin;
+  school: School;
+  coachTrust: number;
+  training: TrainingState;
+  condition: ConditionState;
+  season: SeasonState | null;
+  history: SeasonSummary[];
+  careerEnd: CareerEnd | null;
   /** Everything the player is not allowed to see. Stripped by `toPublicView`. */
   hidden: {
     genetics: Genetics;
   };
   log: LogEntry[];
 }
-
-/**
- * Actions submitted with a month tick. Deliberately empty for Phase 0/1 — the
- * parameter exists so `tick`'s signature is right from the first commit
- * (SPEC §16.3). Training and action points arrive in Phase 3.
- */
-export type MonthAction = never;
