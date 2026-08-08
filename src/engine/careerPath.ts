@@ -1,4 +1,5 @@
 import { clamp, type Rng } from './rng';
+import { overallFor } from './attributes';
 import { PROGRAMS, TIER_LABEL, jucoPrograms, programById } from './colleges';
 import { activeOffers, bestOffer } from './recruiting';
 import type {
@@ -8,6 +9,7 @@ import type {
   PathOption,
   PostHighSchoolPath,
   Program,
+  ProgramTier,
 } from './types';
 
 /**
@@ -50,6 +52,10 @@ const STAGE_FOR_PATH: Record<PostHighSchoolPath, CareerStage> = {
  * and why.
  */
 export function pathOptionsFor(state: GameState): PathOption[] {
+  // A JUCO graduate is re-recruited on what he can do now, not on a high
+  // school ranking two years stale (SPEC §9).
+  if (state.stage === 'juco') return jucoGraduateOptions(state);
+
   const rank = state.hype.nationalRank;
   const qualifier = state.academics.status !== 'non-qualifier';
   const options: PathOption[] = [];
@@ -140,6 +146,56 @@ export function pathOptionsFor(state: GameState): PathOption[] {
         ? null
         : `Clubs are not signing an unranked eighteen-year-old`,
   });
+
+  return options;
+}
+
+/**
+ * The crossroads at the end of junior college (SPEC §9).
+ *
+ * "Two years at juco, then re-recruit as a transfer with a compressed window.
+ * This must be a genuinely survivable and satisfying run, not a fail state."
+ * So the offer here is driven by how good he actually got, not by where he
+ * was ranked as a senior in high school.
+ */
+function jucoGraduateOptions(state: GameState): PathOption[] {
+  const overall = overallFor(state.player.attributes, state.player.position);
+
+  // What level of four-year program will take him now.
+  const tier: ProgramTier =
+    overall >= 80
+      ? 'high-major'
+      : overall >= 72
+        ? 'mid-major'
+        : 'low-major';
+
+  const target =
+    PROGRAMS.filter((p) => p.tier === tier).sort(
+      (a, b) => b.strength - a.strength,
+    )[0] ?? PROGRAMS.find((p) => p.tier === 'low-major');
+
+  const options: PathOption[] = [
+    {
+      path: 'college',
+      programId: target?.id ?? null,
+      label: target ? `${target.name} (${TIER_LABEL[target.tier]})` : 'Four-year college',
+      detail:
+        'Two years of junior college got you looked at again. Take the scholarship and finish the job.',
+      stipend: PATH.COLLEGE_STIPEND,
+      available: Boolean(target) && overall >= 58,
+      blockedReason:
+        overall >= 58 ? null : 'No four-year program is interested yet',
+    },
+    {
+      path: 'overseas',
+      programId: null,
+      label: 'Overseas professional',
+      detail: 'Skip the rest of college and get paid to play now.',
+      stipend: PATH.OVERSEAS_STIPEND,
+      available: overall >= 62,
+      blockedReason: overall >= 62 ? null : 'Clubs are not calling',
+    },
+  ];
 
   return options;
 }

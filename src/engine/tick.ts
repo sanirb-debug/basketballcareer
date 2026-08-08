@@ -354,6 +354,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
 
   // --- 11. Season rollover ----------------------------------------------
   let history = state.history;
+  let proPlayoffRound: number | null = null;
   const postseasonMonth = seasonConfigFor(stage).postseasonMonth;
   if (
     season &&
@@ -370,6 +371,12 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
         ? `${gradeLabel(season.grade)} year done: ${season.wins}-${season.losses}, ${ppg} ppg.`
         : `Season done: ${season.wins}-${season.losses}, ${ppg} ppg.`,
     );
+    // The postseason result has to be recorded before the season is cleared,
+    // or a title run leaves no trace and a championship can never happen.
+    if (stage === 'nba' && state.pro) {
+      proPlayoffRound = season.playoffWins;
+    }
+
     history = [...history, summary];
     season = null;
   }
@@ -433,6 +440,10 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     recruiting: recruitingResult.recruiting,
     events: { ...state.events, flags: eventFlags },
     money,
+    pro:
+      proPlayoffRound !== null && state.pro
+        ? { ...state.pro, lastPlayoffRound: proPlayoffRound }
+        : state.pro,
     careerEnd,
     log: [...state.log, ...log],
   };
@@ -495,15 +506,63 @@ function advanceStage(state: GameState, note: Note, rng: Rng): GameState {
       };
     }
 
-    case 'college':
     case 'juco': {
       next = advanceCollege(next, note);
       next = advanceDraft(next, note, rng);
-      if (next.stage !== 'college' && next.stage !== 'juco') break;
+      if (next.stage !== 'juco') break;
 
+      // Two years of junior college, then re-recruit (SPEC §9). This is the
+      // whole point of the JUCO road — it is a detour, not a dead end.
       if (collegeExhausted(next)) {
-        // Out of eligibility. If he never declared, the road stops here.
-        note('system', 'Your eligibility is used up.');
+        if (!hasAnyPath(next)) {
+          note('system', 'Two years at junior college and nobody came back.');
+          return { ...next, careerEnd: resolveEnding(next) };
+        }
+        note('system', 'Junior college is done. Time to decide where you go next.');
+        return { ...next, awaitingPath: true };
+      }
+      break;
+    }
+
+    case 'college': {
+      next = advanceCollege(next, note);
+
+      // A senior is automatically draft-eligible — there is nothing to
+      // declare once the eligibility is gone. Declaring *early* is the
+      // decision; being out of years is just arithmetic.
+      if (
+        next.college &&
+        next.college.eligibilityLeft <= 0 &&
+        next.draft &&
+        !next.draft.declared &&
+        !next.draft.completed
+      ) {
+        note('system', 'Your eligibility is up — you are in the draft automatically.');
+        next = {
+          ...next,
+          draft: {
+            ...next.draft,
+            declared: true,
+            testingWaters: false,
+            year: next.clock.year,
+          },
+        };
+      }
+
+      next = advanceDraft(next, note, rng);
+      if (next.stage !== 'college') break;
+
+      // Out of eligibility, draft has been and gone, nothing landed.
+      if (
+        next.college &&
+        next.college.eligibilityLeft <= 0 &&
+        next.draft?.completed
+      ) {
+        if (hasAnyPath(next)) {
+          note('system', 'College is over. There is still basketball to play.');
+          return { ...next, awaitingPath: true };
+        }
+        note('system', 'College is over and no professional door opened.');
         return { ...next, careerEnd: resolveEnding(next) };
       }
       break;

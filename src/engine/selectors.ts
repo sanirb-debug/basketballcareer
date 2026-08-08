@@ -20,7 +20,18 @@ import { eventById } from './events/engine';
 import { pathOptionsFor } from './careerPath';
 import { describeProjection, canDeclare, canWithdraw } from './draft';
 import { ROLE_LABEL, teamById } from './proLeague';
-import { canEnterPortal, canRedshirt, canRequestTrade, transferOptions } from './decisions';
+import {
+  canChangePosition,
+  canEnterPortal,
+  canReclassify,
+  canRedshirt,
+  canRequestTrade,
+  canTransferSchool,
+  positionFit,
+  suggestedPosition,
+  transferOptions,
+} from './decisions';
+import { SCHOOLS, SCHOOL_TIERS } from './school';
 import type {
   CareerStage,
   PathOption,
@@ -41,7 +52,7 @@ import type {
   Reputation,
   SeasonSummary,
 } from './types';
-import { RELATIONSHIP_IDS } from './types';
+import { POSITIONS, RELATIONSHIP_IDS } from './types';
 
 /**
  * The player-facing projection of game state.
@@ -131,6 +142,16 @@ export interface RankingsView {
 }
 
 
+export interface BigChoices {
+  canChangePosition: boolean;
+  /** The position this player's body is actually built for now. */
+  suggestedPosition: Position;
+  positionFits: { position: Position; fit: number }[];
+  canTransferSchool: boolean;
+  schoolOptions: { tier: string; name: string; blurb: string }[];
+  canReclassify: boolean;
+}
+
 export interface CollegeView {
   programName: string;
   tierLabel: string;
@@ -219,6 +240,7 @@ export interface PublicView {
   rankings: RankingsView;
   relationships: RelationshipRow[];
   pendingEvent: PendingEventView | null;
+  choices: BigChoices;
   stage: CareerStage;
   stageLabel: string;
   awaitingPath: boolean;
@@ -313,6 +335,23 @@ export function toPublicView(state: GameState): PublicView {
       active: state.relationships[id].active,
     })),
     pendingEvent: toPendingEvent(state),
+    choices: {
+      canChangePosition: canChangePosition(state),
+      suggestedPosition: suggestedPosition(state),
+      positionFits: POSITIONS.map((position) => ({
+        position,
+        fit: Math.round(positionFit(state, position)),
+      })),
+      canTransferSchool: canTransferSchool(state),
+      schoolOptions: SCHOOL_TIERS.filter(
+        (t) => SCHOOLS[t].name !== state.school.name,
+      ).map((t) => ({
+        tier: t,
+        name: SCHOOLS[t].name,
+        blurb: SCHOOLS[t].blurb,
+      })),
+      canReclassify: canReclassify(state),
+    },
     stage: state.stage,
     stageLabel: STAGE_LABEL[state.stage],
     awaitingPath: state.awaitingPath,

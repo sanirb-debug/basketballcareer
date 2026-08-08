@@ -157,6 +157,31 @@ export function advanceDraft(
   const projection = projectDraftStock(state);
   draft = { ...draft, projection };
 
+  /*
+   * An undrafted player gets another look next year.
+   *
+   * Going undrafted once used to close the door permanently, which stranded
+   * players overseas for a decade with no way back. Real careers do not work
+   * that way — you go and get better and put your name in again.
+   */
+  const ageYears = ageYearsOf(state);
+  if (
+    draft.completed &&
+    draft.pick === 0 &&
+    state.clock.month === DRAFT.DECLARE_MONTH &&
+    ageYears < 26 &&
+    (state.stage === 'overseas' || state.stage === 'developmental')
+  ) {
+    draft = {
+      ...draft,
+      year: state.clock.year,
+      declared: true,
+      testingWaters: false,
+      completed: false,
+    };
+    note('system', 'Putting your name back in the draft.');
+  }
+
   const isDraftMonth = state.clock.month === DRAFT.MONTH;
   if (!isDraftMonth || !draft.declared || draft.completed || draft.withdrew) {
     return { ...next, draft };
@@ -184,7 +209,24 @@ export function advanceDraft(
     };
   }
 
-  // Undrafted: a two-way deal and a summer to prove it.
+  // Undrafted. A near-miss still gets a two-way and a Summer League look;
+  // everyone else goes and earns a living somewhere else, which is what
+  // actually happens to the overwhelming majority of undrafted players.
+  const nearMiss = result.draft.projection <= 70 && rng.chance(0.3);
+
+  if (!nearMiss) {
+    note(
+      'system',
+      'Undrafted, and no camp invite came. There is still professional basketball overseas.',
+    );
+    return {
+      ...next,
+      draft: result.draft,
+      stage: 'overseas',
+      college: null,
+    };
+  }
+
   const league = generateLeague(rng);
   const team = league[Math.floor(rng.next() * league.length)] as (typeof league)[number];
   note(

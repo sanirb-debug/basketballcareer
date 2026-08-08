@@ -101,8 +101,10 @@ export function teamForPick(league: ProTeam[], pick: number): ProTeam {
 
 /** Rookie-scale money by draft slot, in millions per year. */
 export function rookieContract(pick: number): Contract {
+  // Two-way deals are one year at a time — that is the whole precariousness
+  // of the arrangement, and it is why the shuttle ending exists.
   if (pick <= 0) {
-    return { type: 'two-way', salary: PRO.TWO_WAY_SALARY, yearsLeft: 2, teamOption: true };
+    return { type: 'two-way', salary: PRO.TWO_WAY_SALARY, yearsLeft: 1, teamOption: true };
   }
   const scale = clamp(11.5 - (pick - 1) * 0.32, 1.2, 11.5);
   return {
@@ -203,7 +205,15 @@ export function ageMultiplier(ageYears: number): number {
   return clamp(0.945 - (ageYears - 32) * 0.06, 0.45, 1);
 }
 
-/** Whether a career should end this offseason. */
+/**
+ * Whether a career ends this offseason.
+ *
+ * Two separate forces, and the first is the one that ends most careers: you
+ * have to be good enough to hold a roster spot at all. The average NBA career
+ * is under five years not because everyone ages out but because most players
+ * are replaced by somebody younger and cheaper. Age is the second force, and
+ * it only bites at the end.
+ */
 export function shouldRetire(
   overall: number,
   ageYears: number,
@@ -211,13 +221,23 @@ export function shouldRetire(
   rng: Rng,
 ): boolean {
   if (ageYears >= PRO.HARD_RETIREMENT_AGE) return true;
-  if (ageYears < 29) return false;
 
-  // Ineffective and old is the combination that ends careers.
-  const pressure =
-    (ageYears - 29) * 0.11 + Math.max(0, (68 - overall) / 100) + seasons * 0.004;
-  return rng.chance(clamp(pressure, 0, 0.95));
+  // Nobody who is young and comfortably good enough walks away. Without this
+  // the mileage term quietly retired 25-year-old All-Star-calibre players.
+  if (ageYears < 28 && overall >= ROSTER_BAR) return false;
+
+  // Not good enough to keep a spot. Bites at any age.
+  const rosterPressure = overall < ROSTER_BAR ? (ROSTER_BAR - overall) * 0.075 : 0;
+  // Age, which only really matters once you are past thirty.
+  const agePressure = ageYears >= 30 ? (ageYears - 29) * 0.13 : 0;
+  // A long career is its own accumulation of wear.
+  const mileage = seasons * 0.006;
+
+  return rng.chance(clamp(rosterPressure + agePressure + mileage, 0, 0.95));
 }
+
+/** Overall below which a player is fighting for his roster spot every year. */
+export const ROSTER_BAR = 74;
 
 export interface SeasonAwards {
   awards: Award[];
@@ -240,7 +260,8 @@ export function evaluateAwards(
 
   if (allStar) awards.push({ season, name: 'All-Star' });
 
-  if (overall >= 92 && ppg >= 26 && teamWins >= 50 && rng.chance(0.45)) {
+  // Reachable, but only for a genuinely great season on a good team.
+  if (overall >= 87 && ppg >= 24 && teamWins >= 45 && rng.chance(0.4)) {
     awards.push({ season, name: 'MVP' });
   }
   if (isRookie && ppg >= 15 && rng.chance(0.5)) {

@@ -50,8 +50,19 @@ export function projectDraftStock(state: GameState): number {
       (state.player.birthYear * 12 + state.player.birthMonth)) /
     12;
 
-  const recent = state.history.at(-1);
-  const ppg = recent && recent.games > 0 ? recent.totals.points / recent.games : 0;
+  /*
+   * Scouts judge on a body of work, not one season.
+   *
+   * Reading only the most recent year meant a single injury-wrecked or
+   * redshirt season collapsed a player's stock to zero — which perversely
+   * made a harder-working, more injury-prone career draft *worse* than a
+   * lazier one. Take the best of the last two.
+   */
+  const ppgOf = (index: number) => {
+    const season = state.history.at(index);
+    return season && season.games > 0 ? season.totals.points / season.games : 0;
+  };
+  const ppg = Math.max(ppgOf(-1), ppgOf(-2));
 
   // Level of competition matters: the same numbers mean different things.
   const levelBonus =
@@ -68,16 +79,25 @@ export function projectDraftStock(state: GameState): number {
   // Youth is the single biggest multiplier on draft stock.
   const youth = clamp((22 - ageYears) * 4.5, -14, 16);
 
+  /*
+   * The board is brutally steep on purpose.
+   *
+   * Sixty players are drafted worldwide each year. A solid college starter is
+   * not a draft pick — he is a very good player who goes to Europe. Anchoring
+   * at 79 overall ≈ the back of the first round keeps that true: below the
+   * mid-70s the projection falls off the board entirely, which is what makes
+   * hearing your name called mean something.
+   */
   const score =
-    (overall - 60) * 2.3 +
-    ppg * 1.5 +
+    (overall - 79) * 3.6 +
+    (ppg - 12) * 0.9 +
     levelBonus +
     youth +
-    (state.hype.hype - 40) * 0.28 +
-    (state.reputation.offCourt - 50) * 0.12;
+    (state.hype.hype - 40) * 0.22 +
+    (state.reputation.offCourt - 50) * 0.1;
 
   // Score maps onto a board position: high score = early pick.
-  return clamp(Math.round(62 - score), 1, 99);
+  return clamp(Math.round(34 - score), 1, 99);
 }
 
 export function canDeclare(state: GameState): boolean {

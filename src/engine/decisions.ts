@@ -1,8 +1,19 @@
 import { createRng } from './rng';
+import { phaseFor } from './calendar';
+import { gradeForClock } from './season';
+import { schoolFor } from './school';
 import { PROGRAMS, programById } from './colleges';
 import { enterPath, pathOptionsFor } from './careerPath';
 import { DRAFT, canDeclare, canWithdraw, initialDraft } from './draft';
-import type { GameState, LogEntry, PostHighSchoolPath, Program } from './types';
+import { POSITIONS } from './types';
+import type {
+  GameState,
+  LogEntry,
+  PostHighSchoolPath,
+  Position,
+  Program,
+  SchoolTier,
+} from './types';
 
 /**
  * Decisions the player makes outside the month tick (SPEC §14).
@@ -190,6 +201,143 @@ export function transferTo(state: GameState, programId: string): GameState {
     },
     season: null,
     log: append(state, `Transferred to ${program.name}.`),
+  };
+}
+
+/**
+ * Position change (SPEC §4).
+ *
+ * The whole premise of the hidden genetic roll is that a late spurt can
+ * "reshape your entire career — you built a handle-and-floater game and now
+ * you're a big." That only lands if you can actually respond to it, so a
+ * player can re-declare his position between seasons.
+ */
+export function canChangePosition(state: GameState): boolean {
+  if (state.careerEnd || state.awaitingPath) return false;
+  // Between seasons only — you do not switch positions in February.
+  const phase = phaseFor(state.clock, state.stage).phase;
+  return phase === 'OFFSEASON' || phase === 'SUMMER' || phase === 'AAU';
+}
+
+/**
+ * How well a position fits the body the player actually has.
+ * Used to surface the suggestion rather than leave it buried.
+ */
+export function positionFit(state: GameState, position: Position): number {
+  const height = state.player.body.heightInches;
+  const ideal: Record<Position, number> = {
+    PG: 74,
+    SG: 77,
+    SF: 79,
+    PF: 81,
+    C: 83,
+  };
+  return Math.max(0, 100 - Math.abs(height - ideal[position]) * 9);
+}
+
+/** The position this player's body is actually built for right now. */
+export function suggestedPosition(state: GameState): Position {
+  return [...POSITIONS].sort(
+    (a, b) => positionFit(state, b) - positionFit(state, a),
+  )[0] as Position;
+}
+
+export function changePosition(state: GameState, position: Position): GameState {
+  if (!canChangePosition(state)) {
+    throw new DecisionError('A position change has to happen between seasons');
+  }
+  if (position === state.player.position) {
+    throw new DecisionError('You already play there');
+  }
+
+  return {
+    ...state,
+    player: { ...state.player, position },
+    // A new position means learning a new job; the staff needs convincing.
+    coachTrust: Math.max(0, state.coachTrust - 8),
+    log: append(
+      state,
+      `Moved to ${position}. New position, new film, and a coach to convince.`,
+    ),
+  };
+}
+
+/**
+ * Transferring high schools (SPEC §8): "reputation hit + sit-out period".
+ */
+export function canTransferSchool(state: GameState): boolean {
+  return (
+    state.stage === 'highschool' &&
+    !state.careerEnd &&
+    !state.awaitingPath &&
+    gradeForClock(state.clock) < 12 &&
+    // Summer only — you do not move schools mid-season.
+    state.clock.month >= 4 &&
+    state.clock.month <= 7
+  );
+}
+
+export function transferSchool(state: GameState, tier: SchoolTier): GameState {
+  if (!canTransferSchool(state)) {
+    throw new DecisionError('You can only transfer between school years');
+  }
+  const school = schoolFor(tier);
+  if (school.name === state.school.name) {
+    throw new DecisionError('You already go there');
+  }
+
+  return {
+    ...state,
+    school,
+    // A transfer costs standing everywhere and starts you at the back of
+    // the queue with a staff that did not recruit you.
+    coachTrust: Math.max(0, school.startingTrust - 12),
+    reputation: {
+      ...state.reputation,
+      offCourt: Math.max(0, state.reputation.offCourt - 7),
+    },
+    season: null,
+    log: append(
+      state,
+      `Transferred to ${school.name}. New gym, new coach, and people are talking.`,
+    ),
+  };
+}
+
+/**
+ * Reclassifying (SPEC §8): repeat a year to be older and more developed
+ * relative to your class. Costs a year of your life; buys physical maturity
+ * and another recruiting cycle.
+ */
+export function canReclassify(state: GameState): boolean {
+  return (
+    state.stage === 'highschool' &&
+    !state.events.flags.reclassified &&
+    gradeForClock(state.clock) >= 9 &&
+    gradeForClock(state.clock) <= 11 &&
+    state.clock.month >= 4 &&
+    state.clock.month <= 7
+  );
+}
+
+export function reclassify(state: GameState): GameState {
+  if (!canReclassify(state)) {
+    throw new DecisionError('You can only reclassify in the summer, before senior year');
+  }
+
+  // Push the birth date back a year: you are now old for your class rather
+  // than young for it, with everything that implies physically.
+  return {
+    ...state,
+    player: { ...state.player, birthYear: state.player.birthYear - 1 },
+    events: {
+      ...state.events,
+      flags: { ...state.events.flags, reclassified: true },
+    },
+    log: append(
+      state,
+      'Reclassified down a year. You are the old one in the class now.',
+    ),
   };
 }
 

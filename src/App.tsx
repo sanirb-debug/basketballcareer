@@ -6,15 +6,18 @@ import { toPublicView } from './engine/selectors';
 import { exportCareerText } from './engine/careerExport';
 import { commitTo, decommit, sign } from './engine/recruiting';
 import {
+  changePosition,
   choosePath,
   declareForDraft,
+  reclassify,
+  transferSchool,
   enterPortal,
   redshirt,
   requestTrade,
   transferTo,
   withdrawFromDraft,
 } from './engine/decisions';
-import type { PostHighSchoolPath } from './engine/types';
+import type { PostHighSchoolPath, Position, SchoolTier } from './engine/types';
 import { hashSeedString, clamp } from './engine/rng';
 import { phaseFor } from './engine/calendar';
 import type { GameState, MonthAction } from './engine/types';
@@ -186,6 +189,11 @@ export default function App() {
     applyDecision((s) => declareForDraft(s, testingWaters));
   const handleWithdraw = () => applyDecision(withdrawFromDraft);
   const handleRequestTrade = () => applyDecision(requestTrade);
+  const handleChangePosition = (position: Position) =>
+    applyDecision((s) => changePosition(s, position));
+  const handleTransferSchool = (tier: SchoolTier) =>
+    applyDecision((s) => transferSchool(s, tier));
+  const handleReclassify = () => applyDecision(reclassify);
 
   const handleExit = () => {
     setState(null);
@@ -268,6 +276,9 @@ export default function App() {
               onDeclare={handleDeclare}
               onWithdraw={handleWithdraw}
               onRequestTrade={handleRequestTrade}
+              onChangePosition={handleChangePosition}
+              onTransferSchool={handleTransferSchool}
+              onReclassify={handleReclassify}
             />
           )}
 

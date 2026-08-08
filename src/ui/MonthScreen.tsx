@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import type { PublicView } from '../engine/selectors';
-import type { LogEntry, MonthAction, TrainingState } from '../engine/types';
+import type {
+  LogEntry,
+  MonthAction,
+  Position,
+  SchoolTier,
+  TrainingState,
+} from '../engine/types';
 import ActionPicker from './ActionPicker';
 import GamesPanel from './GamesPanel';
 import RecruitingPanel from './RecruitingPanel';
@@ -8,6 +14,7 @@ import RankingsPanel from './RankingsPanel';
 import LifePanel from './LifePanel';
 import CareerArchive from './CareerArchive';
 import CareerPanel from './CareerPanel';
+import BigChoicesPanel from './BigChoicesPanel';
 
 /**
  * The month screen (SPEC §17), which deliberately changes shape by season
@@ -41,6 +48,9 @@ interface Props {
   onDeclare: (testingWaters: boolean) => void;
   onWithdraw: () => void;
   onRequestTrade: () => void;
+  onChangePosition: (position: Position) => void;
+  onTransferSchool: (tier: SchoolTier) => void;
+  onReclassify: () => void;
 }
 
 interface PhaseSkin {
@@ -115,6 +125,9 @@ export default function MonthScreen({
   onDeclare,
   onWithdraw,
   onRequestTrade,
+  onChangePosition,
+  onTransferSchool,
+  onReclassify,
 }: Props) {
   const [tab, setTab] = useState<Tab>('month');
   const inHighSchool = view.stage === 'highschool';
@@ -306,6 +319,12 @@ export default function MonthScreen({
         {tab === 'month' && (
           <div className="grid grid-cols-[1fr_18rem] gap-10">
             <div className="space-y-9">
+              <BigChoicesPanel
+                view={view}
+                onChangePosition={onChangePosition}
+                onTransferSchool={onTransferSchool}
+                onReclassify={onReclassify}
+              />
               {skin.gamesFirst ? (
                 <>
                   {games}

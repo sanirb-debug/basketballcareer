@@ -259,9 +259,18 @@ export const TRAINING = {
    */
   DIMINISHING: [1, 0.8, 0.6, 0.5] as const,
 
-  /** Soft cap on any trained attribute, derived from hidden potential. */
-  CEILING_BASE: 45,
-  CEILING_PER_POTENTIAL: 0.55,
+  /**
+   * Soft cap on any trained attribute, derived from hidden potential.
+   *
+   * SPEC §5 calls potential "a soft cap on skill growth *rate*" — it is meant
+   * to slow you down, not wall you off. An earlier, tighter curve capped an
+   * average-potential player near 75, which made genetics decide the entire
+   * career and left effort worth almost nothing: a dedicated run and a lazy
+   * one finished within two points of each other. This band leaves an average
+   * player real room to work with while keeping the very top for the gifted.
+   */
+  CEILING_BASE: 62,
+  CEILING_PER_POTENTIAL: 0.37,
   /** Gains taper across this many points below the ceiling. */
   HEADROOM_BAND: 18,
 
