@@ -7,6 +7,7 @@ import RecruitingPanel from './RecruitingPanel';
 import RankingsPanel from './RankingsPanel';
 import LifePanel from './LifePanel';
 import CareerArchive from './CareerArchive';
+import CareerPanel from './CareerPanel';
 
 /**
  * The month screen (SPEC §17), which deliberately changes shape by season
@@ -19,7 +20,7 @@ import CareerArchive from './CareerArchive';
  * action points; in the offseason the training menu leads with four.
  */
 
-type Tab = 'month' | 'recruiting' | 'rankings' | 'life' | 'archive';
+type Tab = 'month' | 'career' | 'recruiting' | 'rankings' | 'life' | 'archive';
 
 interface Props {
   view: PublicView;
@@ -34,6 +35,12 @@ interface Props {
   onCommit: (programId: string) => void;
   onDecommit: () => void;
   onSign: () => void;
+  onRedshirt: () => void;
+  onEnterPortal: () => void;
+  onTransfer: (programId: string) => void;
+  onDeclare: (testingWaters: boolean) => void;
+  onWithdraw: () => void;
+  onRequestTrade: () => void;
 }
 
 interface PhaseSkin {
@@ -102,8 +109,15 @@ export default function MonthScreen({
   onCommit,
   onDecommit,
   onSign,
+  onRedshirt,
+  onEnterPortal,
+  onTransfer,
+  onDeclare,
+  onWithdraw,
+  onRequestTrade,
 }: Props) {
   const [tab, setTab] = useState<Tab>('month');
+  const inHighSchool = view.stage === 'highschool';
   const skin = skinFor(view.phase);
   const season = view.season;
 
@@ -133,16 +147,34 @@ export default function MonthScreen({
     />
   );
 
+  // Tabs follow the stage: recruiting and the national board stop mattering
+  // the moment high school is over, and a career panel takes their place.
   const tabs: { id: Tab; label: string; badge?: string }[] = [
     { id: 'month', label: 'Month' },
-    {
-      id: 'recruiting',
-      label: 'Recruiting',
-      ...(view.recruiting.offerCount > 0
-        ? { badge: String(view.recruiting.offerCount) }
-        : {}),
-    },
-    { id: 'rankings', label: 'Rankings', badge: `#${view.rankings.nationalRank}` },
+    ...(inHighSchool
+      ? ([
+          {
+            id: 'recruiting' as Tab,
+            label: 'Recruiting',
+            ...(view.recruiting.offerCount > 0
+              ? { badge: String(view.recruiting.offerCount) }
+              : {}),
+          },
+          {
+            id: 'rankings' as Tab,
+            label: 'Rankings',
+            badge: `#${view.rankings.nationalRank}`,
+          },
+        ])
+      : ([
+          {
+            id: 'career' as Tab,
+            label: view.pro ? 'Contract' : 'Program',
+            ...(view.draft && !view.draft.completed
+              ? { badge: `#${view.draft.projection}` }
+              : {}),
+          },
+        ])),
     { id: 'life', label: 'Life' },
     { id: 'archive', label: 'Archive' },
   ];
@@ -172,10 +204,19 @@ export default function MonthScreen({
 
       <div className="mt-6 text-sm text-neutral-400">
         {view.player.name} · #{view.player.jerseyNumber} · {view.player.position} ·{' '}
-        {view.school.name}
+        {inHighSchool
+          ? view.school.name
+          : (view.pro?.teamName ?? view.college?.programName ?? view.stageLabel)}
         <span className="text-neutral-600">
           {' '}
-          · {view.gradeLabel}
+          ·{' '}
+          {inHighSchool
+            ? view.gradeLabel
+            : view.college
+              ? `Year ${view.college.year}`
+              : view.pro
+                ? `${view.pro.seasons} seasons`
+                : view.stageLabel}
           {season && ` · ${season.wins}–${season.losses}`}
         </span>
       </div>
@@ -190,12 +231,31 @@ export default function MonthScreen({
           tone={view.energy < 35 ? 'bad' : undefined}
         />
         <Stat label="Trust" value={String(view.coachTrust)} />
-        <Stat label="Rank" value={`#${view.rankings.nationalRank}`} />
-        <Stat
-          label="GPA"
-          value={view.academics.gpa.toFixed(2)}
-          tone={view.academics.status === 'non-qualifier' ? 'bad' : undefined}
-        />
+        {inHighSchool ? (
+          <>
+            <Stat label="Rank" value={`#${view.rankings.nationalRank}`} />
+            <Stat
+              label="GPA"
+              value={view.academics.gpa.toFixed(2)}
+              tone={view.academics.status === 'non-qualifier' ? 'bad' : undefined}
+            />
+          </>
+        ) : (
+          <>
+            <Stat
+              label={view.pro ? 'Role' : 'Year'}
+              value={view.pro ? view.pro.role : String(view.college?.year ?? 1)}
+            />
+            <Stat
+              label={view.pro ? 'Salary' : 'Draft'}
+              value={
+                view.pro
+                  ? `$${view.pro.salary}M`
+                  : `#${view.draft?.projection ?? '—'}`
+              }
+            />
+          </>
+        )}
       </dl>
 
       {view.injury && (
@@ -330,6 +390,17 @@ export default function MonthScreen({
           </div>
         )}
 
+        {tab === 'career' && (
+          <CareerPanel
+            view={view}
+            onRedshirt={onRedshirt}
+            onEnterPortal={onEnterPortal}
+            onTransfer={onTransfer}
+            onDeclare={onDeclare}
+            onWithdraw={onWithdraw}
+            onRequestTrade={onRequestTrade}
+          />
+        )}
         {tab === 'recruiting' && (
           <RecruitingPanel
             view={view}

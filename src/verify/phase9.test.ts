@@ -47,6 +47,8 @@ import {
 } from '../engine/proLeague';
 import { PRO_ENDINGS, resolveProEnding } from '../engine/endings';
 import { COLLEGE_SEASON, PRO_SEASON, seasonConfigFor } from '../engine/season';
+import { LEVELS, levelFor, resolveGame } from '../engine/gameSim';
+import { ATTRIBUTE_KEYS } from '../engine/types';
 import type { GameState, MonthAction, ProState } from '../engine/types';
 
 /**
@@ -407,6 +409,66 @@ describe('the professional league (SPEC §14)', () => {
       if (shouldRetire(88, 34, 12, rng)) strongDone++;
     }
     expect(weakDone).toBeGreaterThan(strongDone);
+  });
+});
+
+describe('each level looks like itself (SPEC §13)', () => {
+  function averageScore(level: 'highschool' | 'college' | 'pro') {
+    const rng = createRng(seedToState(17));
+    const attrs = {} as Record<string, number>;
+    for (const k of ATTRIBUTE_KEYS) attrs[k] = 70;
+
+    let team = 0;
+    let opp = 0;
+    const games = 60;
+    for (let i = 0; i < games; i++) {
+      const out = resolveGame(rng, {
+        attributes: attrs as never,
+        position: 'SG',
+        minutes: LEVELS[level].gameMinutes * 0.7,
+        opponentStrength: 62,
+        teamStrength: 62,
+        home: i % 2 === 0,
+        energy: 80,
+        confidence: 50,
+        level,
+      });
+      team += out.teamScore;
+      opp += out.oppScore;
+    }
+    return { team: team / games, opp: opp / games };
+  }
+
+  test('a high school game does not finish like a pro game', () => {
+    const hs = averageScore('highschool');
+    const college = averageScore('college');
+    const pro = averageScore('pro');
+
+    // Rough but firm bands — a 41-49 pro game reads as broken.
+    expect(hs.team).toBeGreaterThan(35);
+    expect(hs.team).toBeLessThan(80);
+    expect(college.team).toBeGreaterThan(hs.team);
+    expect(pro.team).toBeGreaterThan(95);
+    expect(pro.opp).toBeGreaterThan(95);
+    expect(pro.team).toBeLessThan(150);
+  });
+
+  test('game length grows with the level', () => {
+    expect(LEVELS.highschool.gameMinutes).toBe(32);
+    expect(LEVELS.college.gameMinutes).toBe(40);
+    expect(LEVELS.pro.gameMinutes).toBe(48);
+    expect(levelFor('nba')).toBe('pro');
+    expect(levelFor('college')).toBe('college');
+    expect(levelFor('juco')).toBe('college');
+    expect(levelFor('highschool')).toBe('highschool');
+  });
+
+  test('you play opponents from your own level', () => {
+    // A pro schedule should be franchises, not the high school down the road.
+    expect(PRO_SEASON.opponents.some((n) => n.includes('Boston Wolves'))).toBe(true);
+    expect(PRO_SEASON.opponents).not.toContain('Bishop Kelley');
+    expect(COLLEGE_SEASON.opponents).not.toContain('Bishop Kelley');
+    expect(COLLEGE_SEASON.opponents.length).toBeGreaterThan(50);
   });
 });
 

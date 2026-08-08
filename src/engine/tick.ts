@@ -4,7 +4,7 @@ import { growOneMonth } from './growth';
 import { applyDerivedAttributes, overallFor } from './attributes';
 import { ACTIONS, TRAINING, applyActions, normalizeActions } from './actions';
 import { advanceRehab, effectiveAttributes, rollInjury } from './condition';
-import { GAME_MINUTES, minutesFor, resolveGame } from './gameSim';
+import { GAME_MINUTES, LEVELS, levelFor, minutesFor, resolveGame } from './gameSim';
 import {
   advanceLeague,
   createSeason,
@@ -623,6 +623,8 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
   if (scheduled.length === 0) return idle;
 
   const injured = state.condition.injury !== null || redshirting;
+  const level = levelFor(state.stage);
+  const gameMinutes = LEVELS[level].gameMinutes;
   const effective = effectiveAttributes(ctx.attributes, state.condition.injury);
   const overall = overallFor(effective, state.player.position);
 
@@ -650,6 +652,7 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
       team.rosterDepth,
       energy,
       injured,
+      gameMinutes,
     );
 
     const outcome = resolveGame(rng, {
@@ -661,6 +664,7 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
       home: game.home,
       energy,
       confidence: state.player.hiddenMeta.confidence,
+      level,
     });
 
     if (outcome.win) wins++;

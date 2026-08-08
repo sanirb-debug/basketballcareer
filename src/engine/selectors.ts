@@ -8,7 +8,7 @@ import {
 } from './calendar';
 import { overallFor } from './attributes';
 import { effectiveAttributes } from './condition';
-import { GAME_MINUTES, addBox, emptyBox, minutesFor } from './gameSim';
+import { GAME_MINUTES, LEVELS, addBox, emptyBox, levelFor, minutesFor } from './gameSim';
 import { gradeForClock, gradeLabel, perGame } from './season';
 import { describeEligibility } from './academics';
 import { AAU_LABEL } from './hype';
@@ -17,7 +17,14 @@ import { RECRUITING, activeOffers, canSign, isSigningMonth } from './recruiting'
 import { RELATIONSHIP_LABEL } from './relationships';
 import { findRival, rankBoard, rankingScore } from './prospects';
 import { eventById } from './events/engine';
+import { pathOptionsFor } from './careerPath';
+import { describeProjection, canDeclare, canWithdraw } from './draft';
+import { ROLE_LABEL, teamById } from './proLeague';
+import { canEnterPortal, canRedshirt, canRequestTrade, transferOptions } from './decisions';
 import type {
+  CareerStage,
+  PathOption,
+  Program,
   Academics,
   Attributes,
   Body,
@@ -123,6 +130,53 @@ export interface RankingsView {
   rival: { name: string; rank: number; position: string; homeState: string } | null;
 }
 
+
+export interface CollegeView {
+  programName: string;
+  tierLabel: string;
+  conference: string;
+  year: number;
+  eligibilityLeft: number;
+  redshirted: boolean;
+  redshirtingNow: boolean;
+  nilPerMonth: number;
+  transfers: number;
+  trust: number;
+  inPortal: boolean;
+  canRedshirt: boolean;
+  canEnterPortal: boolean;
+  transferOptions: Program[];
+}
+
+export interface DraftView {
+  year: number;
+  declared: boolean;
+  testingWaters: boolean;
+  projection: number;
+  projectionLabel: string;
+  pick: number;
+  round: number;
+  completed: boolean;
+  canDeclare: boolean;
+  canWithdraw: boolean;
+}
+
+export interface ProView {
+  teamName: string;
+  conference: string;
+  role: string;
+  salary: number;
+  contractType: string;
+  yearsLeft: number;
+  seasons: number;
+  championships: number;
+  allStars: number;
+  awards: { season: number; name: string }[];
+  canRequestTrade: boolean;
+  tradeRequested: boolean;
+  standings: { name: string; wins: number; losses: number; conference: string }[];
+}
+
 export interface PublicView {
   seed: number;
   monthsElapsed: number;
@@ -165,6 +219,13 @@ export interface PublicView {
   rankings: RankingsView;
   relationships: RelationshipRow[];
   pendingEvent: PendingEventView | null;
+  stage: CareerStage;
+  stageLabel: string;
+  awaitingPath: boolean;
+  pathOptions: PathOption[];
+  college: CollegeView | null;
+  draft: DraftView | null;
+  pro: ProView | null;
   fullLog: { text: string; date: string; kind: string }[];
   decisions: { choice: string; monthsElapsed: number; title: string }[];
 }
@@ -200,6 +261,7 @@ export function toPublicView(state: GameState): PublicView {
       state.school.rosterDepth,
       state.condition.energy,
       state.condition.injury !== null,
+      LEVELS[levelFor(state.stage)].gameMinutes,
     ),
     injury: state.condition.injury,
     player: {
@@ -251,6 +313,13 @@ export function toPublicView(state: GameState): PublicView {
       active: state.relationships[id].active,
     })),
     pendingEvent: toPendingEvent(state),
+    stage: state.stage,
+    stageLabel: STAGE_LABEL[state.stage],
+    awaitingPath: state.awaitingPath,
+    pathOptions: state.awaitingPath ? pathOptionsFor(state) : [],
+    college: toCollegeView(state),
+    draft: toDraftView(state),
+    pro: toProView(state),
     fullLog: [...state.log]
       .reverse()
       .map((entry) => ({
@@ -386,3 +455,85 @@ function toSeasonView(state: GameState): SeasonView {
 }
 
 export { GAME_MINUTES };
+
+
+const STAGE_LABEL: Record<CareerStage, string> = {
+  highschool: 'High school',
+  juco: 'Junior college',
+  college: 'College',
+  developmental: 'Developmental league',
+  overseas: 'Overseas',
+  nba: 'The league',
+  retired: 'Retired',
+};
+
+function toCollegeView(state: GameState): CollegeView | null {
+  const college = state.college;
+  if (!college) return null;
+  const program = programById(college.programId);
+
+  return {
+    programName: program?.name ?? 'Unknown',
+    tierLabel: program ? TIER_LABEL[program.tier] : '',
+    conference: program?.conference ?? '',
+    year: college.year,
+    eligibilityLeft: college.eligibilityLeft,
+    redshirted: college.redshirted,
+    redshirtingNow: college.redshirtingNow,
+    nilPerMonth: Math.round(college.nilPerMonth),
+    transfers: college.transfers,
+    trust: Math.round(college.trust),
+    inPortal: college.inPortal,
+    canRedshirt: canRedshirt(state),
+    canEnterPortal: canEnterPortal(state),
+    transferOptions: transferOptions(state),
+  };
+}
+
+function toDraftView(state: GameState): DraftView | null {
+  const draft = state.draft;
+  if (!draft) return null;
+
+  return {
+    year: draft.year,
+    declared: draft.declared,
+    testingWaters: draft.testingWaters,
+    projection: draft.projection,
+    projectionLabel: describeProjection(draft.projection),
+    pick: draft.pick,
+    round: draft.round,
+    completed: draft.completed,
+    canDeclare: canDeclare(state),
+    canWithdraw: canWithdraw(state),
+  };
+}
+
+function toProView(state: GameState): ProView | null {
+  const pro = state.pro;
+  if (!pro) return null;
+  const team = teamById(pro.league, pro.teamId);
+
+  return {
+    teamName: team?.name ?? 'Free agent',
+    conference: team?.conference ?? '',
+    role: ROLE_LABEL[pro.role],
+    salary: pro.contract.salary,
+    contractType: pro.contract.type,
+    yearsLeft: pro.contract.yearsLeft,
+    seasons: pro.seasons,
+    championships: pro.championships,
+    allStars: pro.allStars,
+    awards: pro.awards,
+    canRequestTrade: canRequestTrade(state),
+    tradeRequested: pro.tradeRequested,
+    standings: [...pro.league]
+      .sort((a, b) => b.wins - b.losses - (a.wins - a.losses))
+      .slice(0, 10)
+      .map((t) => ({
+        name: t.name,
+        wins: t.wins,
+        losses: t.losses,
+        conference: t.conference,
+      })),
+  };
+}

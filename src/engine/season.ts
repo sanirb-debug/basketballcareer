@@ -1,6 +1,8 @@
 import { clamp, type Rng } from './rng';
 import { absoluteMonth, START_YEAR } from './calendar';
 import { addBox, emptyBox } from './gameSim';
+import { PROGRAMS } from './colleges';
+import { PRO_TEAM_NAMES } from './proLeague';
 import type {
   CareerStage,
   Clock,
@@ -201,14 +203,17 @@ export const HIGH_SCHOOL_SEASON: SeasonConfig = {
   playoffStep: 6,
 };
 
+/** You play other colleges, not the high school down the road. */
+const COLLEGE_OPPONENTS = PROGRAMS.filter((p) => p.tier !== 'juco').map((p) => p.name);
+
 /** Roughly a 28-game college season plus conference and national tournaments. */
 export const COLLEGE_SEASON: SeasonConfig = {
   regularMonths: [10, 11, 0, 1],
   gamesPerMonth: 7,
   postseasonMonth: 2,
   playoffRounds: 5,
-  rivals: LEAGUE_NAMES,
-  opponents: OPPONENT_NAMES,
+  rivals: COLLEGE_OPPONENTS.slice(0, 8),
+  opponents: COLLEGE_OPPONENTS,
   playoffStep: 5,
 };
 
@@ -218,8 +223,8 @@ export const PRO_SEASON: SeasonConfig = {
   gamesPerMonth: 14,
   postseasonMonth: 3,
   playoffRounds: 4,
-  rivals: LEAGUE_NAMES,
-  opponents: OPPONENT_NAMES,
+  rivals: PRO_TEAM_NAMES.slice(0, 8),
+  opponents: PRO_TEAM_NAMES,
   playoffStep: 4,
 };
 

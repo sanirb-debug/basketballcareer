@@ -5,7 +5,16 @@ import { applyEventChoice } from './engine/events/engine';
 import { toPublicView } from './engine/selectors';
 import { exportCareerText } from './engine/careerExport';
 import { commitTo, decommit, sign } from './engine/recruiting';
-import { resolveEnding } from './engine/endings';
+import {
+  choosePath,
+  declareForDraft,
+  enterPortal,
+  redshirt,
+  requestTrade,
+  transferTo,
+  withdrawFromDraft,
+} from './engine/decisions';
+import type { PostHighSchoolPath } from './engine/types';
 import { hashSeedString, clamp } from './engine/rng';
 import { phaseFor } from './engine/calendar';
 import type { GameState, MonthAction } from './engine/types';
@@ -22,6 +31,7 @@ import CharacterCreation from './ui/CharacterCreation';
 import MonthScreen from './ui/MonthScreen';
 import DebugPanel from './ui/DebugPanel';
 import CareerEndScreen from './ui/CareerEndScreen';
+import PathChoiceScreen from './ui/PathChoiceScreen';
 import EventModal from './ui/EventModal';
 
 type Screen = 'slots' | 'create' | 'month';
@@ -148,27 +158,34 @@ export default function App() {
         0,
         result.notes[0] ?? 'Signed.',
       );
-      // Signing day *is* the end of the slice (SPEC §18), so resolve the
-      // ending now rather than making the player tick one more empty month.
-      const ending = resolveEnding(signed);
-      await commitState({
-        ...signed,
-        careerEnd: ending,
-        log: [
-          ...signed.log,
-          {
-            monthsElapsed: signed.monthsElapsed,
-            year: signed.clock.year,
-            month: signed.clock.month,
-            kind: 'system',
-            text: `${ending.reason}. ${ending.detail}`,
-          },
-        ],
-      });
+      // Signing is a commitment, not an ending — the road continues into
+      // college and beyond (SPEC §14).
+      await commitState(signed);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+
+  /** A pure decision helper: apply it, persist it, surface any error. */
+  const applyDecision = async (fn: (state: GameState) => GameState) => {
+    if (!state || saving) return;
+    try {
+      await commitState(fn(state));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleChoosePath = (path: PostHighSchoolPath) =>
+    applyDecision((s) => choosePath(s, path));
+  const handleRedshirt = () => applyDecision(redshirt);
+  const handleEnterPortal = () => applyDecision(enterPortal);
+  const handleTransfer = (programId: string) =>
+    applyDecision((s) => transferTo(s, programId));
+  const handleDeclare = (testingWaters: boolean) =>
+    applyDecision((s) => declareForDraft(s, testingWaters));
+  const handleWithdraw = () => applyDecision(withdrawFromDraft);
+  const handleRequestTrade = () => applyDecision(requestTrade);
 
   const handleExit = () => {
     setState(null);
@@ -225,6 +242,12 @@ export default function App() {
               exportText={() => exportCareerText(state)}
               onExit={handleExit}
             />
+          ) : state.awaitingPath ? (
+            <PathChoiceScreen
+              view={view}
+              busy={saving}
+              onChoose={handleChoosePath}
+            />
           ) : (
             <MonthScreen
               view={view}
@@ -239,6 +262,12 @@ export default function App() {
               onCommit={handleCommit}
               onDecommit={handleDecommit}
               onSign={handleSign}
+              onRedshirt={handleRedshirt}
+              onEnterPortal={handleEnterPortal}
+              onTransfer={handleTransfer}
+              onDeclare={handleDeclare}
+              onWithdraw={handleWithdraw}
+              onRequestTrade={handleRequestTrade}
             />
           )}
 

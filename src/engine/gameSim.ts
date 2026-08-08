@@ -12,9 +12,39 @@ import type { Attributes, BoxScore, Position } from './types';
  * bench.
  */
 
-/** A high school game is 32 minutes. */
+/** A high school game is 32 minutes; college is 40 and the pros play 48. */
 export const GAME_MINUTES = 32;
 const PACE_PER_36 = 76.5;
+
+/**
+ * Scoring environment by level.
+ *
+ * A high school game finishing 55-48 and a pro game finishing 114-109 are
+ * both realistic; the same numbers at the wrong level read as broken. These
+ * set the baseline each side scores before the player is added.
+ */
+export interface LevelProfile {
+  gameMinutes: number;
+  teammateBase: number;
+  opponentBase: number;
+  /** How much team strength swings the score at this level. */
+  strengthSwing: number;
+  spread: number;
+}
+
+export const LEVELS = {
+  highschool: { gameMinutes: 32, teammateBase: 38, opponentBase: 44, strengthSwing: 0.55, spread: 7.5 },
+  college: { gameMinutes: 40, teammateBase: 52, opponentBase: 60, strengthSwing: 0.5, spread: 8 },
+  pro: { gameMinutes: 48, teammateBase: 88, opponentBase: 97, strengthSwing: 0.45, spread: 9.5 },
+} as const satisfies Record<string, LevelProfile>;
+
+export type LevelKey = keyof typeof LEVELS;
+
+export function levelFor(stage: string): LevelKey {
+  if (stage === 'nba') return 'pro';
+  if (stage === 'highschool') return 'highschool';
+  return 'college';
+}
 
 export function emptyBox(): BoxScore {
   return {
@@ -68,6 +98,7 @@ export function minutesFor(
   rosterDepth: number,
   energy: number,
   injured: boolean,
+  gameMinutes: number = GAME_MINUTES,
 ): number {
   if (injured) return 0;
 
@@ -76,7 +107,7 @@ export function minutesFor(
   const gassed = energy < 35 ? (35 - energy) / 35 : 0;
 
   const share = clamp(0.12 + 0.46 * trust + 0.44 * skillEdge - 0.12 * gassed, 0, 1);
-  return Math.round(share * GAME_MINUTES * 10) / 10;
+  return Math.round(share * gameMinutes * 10) / 10;
 }
 
 /** Approximate a binomial draw without looping over every attempt. */
@@ -100,6 +131,8 @@ export interface GameInputs {
   home: boolean;
   energy: number;
   confidence: number;
+  /** Scoring environment. Defaults to high school. */
+  level?: LevelKey;
 }
 
 export interface GameOutcome {
@@ -121,6 +154,7 @@ export function resolveGame(rng: Rng, inputs: GameInputs): GameOutcome {
     confidence,
   } = inputs;
 
+  const profile = LEVELS[inputs.level ?? 'highschool'];
   const overall = overallFor(a, position);
   const scale = minutes / 36;
 
@@ -226,14 +260,22 @@ export function resolveGame(rng: Rng, inputs: GameInputs): GameOutcome {
   // The player's scoring partly substitutes for teammates' rather than
   // stacking on top of a fixed team total.
   const teammatePoints =
-    38 + (teamStrength - 50) * 0.55 - points * 0.35 + rng.normal(0, 6);
-  const teamScore = clamp(Math.round(teammatePoints + points), 20, 130);
+    profile.teammateBase +
+    (teamStrength - 50) * profile.strengthSwing -
+    points * 0.35 +
+    rng.normal(0, 6);
+  const teamScore = clamp(Math.round(teammatePoints + points), 20, 180);
 
   const homeEdge = home ? -2.5 : 2.5;
   const oppScore = clamp(
-    Math.round(44 + (opponentStrength - 50) * 0.6 + homeEdge + rng.normal(0, 7.5)),
+    Math.round(
+      profile.opponentBase +
+        (opponentStrength - 50) * (profile.strengthSwing + 0.05) +
+        homeEdge +
+        rng.normal(0, profile.spread),
+    ),
     20,
-    130,
+    180,
   );
 
   return {

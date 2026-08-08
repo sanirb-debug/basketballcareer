@@ -55,6 +55,8 @@ const TEAM_SEEDS: readonly TeamSeed[] = [
   { id: 'uta', name: 'Utah Summit Peak', conference: 'West' },
 ];
 
+export const PRO_TEAM_NAMES: readonly string[] = TEAM_SEEDS.map((t) => t.name);
+
 export const PRO = {
   TEAMS: TEAM_SEEDS.length,
   /** Games in a pro regular season. */
