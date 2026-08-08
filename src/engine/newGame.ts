@@ -14,6 +14,7 @@ import { schoolFor } from './school';
 import { initialAcademics } from './academics';
 import { initialRecruiting } from './recruiting';
 import { initialRelationships } from './relationships';
+import { initialPeople } from './people';
 import { designateRival, generateClass, playerRank, rankingScore } from './prospects';
 import { overallFor } from './attributes';
 import {
@@ -108,6 +109,7 @@ export function createGame(
   const academics = initialAcademics(rng);
   const recruiting = initialRecruiting(rng);
   const relationships = initialRelationships(origin.familyStructure);
+  const people = initialPeople(rng, input.name, origin.familyStructure);
 
   // A 13-year-old starts with almost no hype: the class does not know he
   // exists yet, which is what makes the climb up the board mean something.
@@ -165,6 +167,9 @@ export function createGame(
     },
     prospects,
     relationships,
+    people,
+    assets: [],
+    social: [],
     recruiting,
     events: { pending: null, flags: {}, fired: [], decisions: [] },
     money: origin.incomeTier === 'affluent' ? 1500 : origin.incomeTier === 'comfortable' ? 600 : 150,

@@ -17,7 +17,20 @@ import {
   transferTo,
   withdrawFromDraft,
 } from './engine/decisions';
-import type { PostHighSchoolPath, Position, SchoolTier } from './engine/types';
+import type {
+  PostHighSchoolPath,
+  Position,
+  SchoolTier,
+  SocialPlatformId,
+} from './engine/types';
+import {
+  buyAsset,
+  interactWith,
+  joinPlatform,
+  makePost,
+} from './engine/lifeActions';
+import type { InteractionId } from './engine/people';
+import type { PostKind } from './engine/activities';
 import { hashSeedString, clamp } from './engine/rng';
 import { phaseFor } from './engine/calendar';
 import type { GameState, MonthAction } from './engine/types';
@@ -195,6 +208,17 @@ export default function App() {
     applyDecision((s) => transferSchool(s, tier));
   const handleReclassify = () => applyDecision(reclassify);
 
+  // Life outside the tick (SPEC §6, §12). Same decision path as everything
+  // else, so each one persists immediately and cannot desync the RNG.
+  const handleInteract = (personId: string, interaction: InteractionId) =>
+    applyDecision((s) => interactWith(s, personId, interaction));
+  const handleBuy = (assetId: string) =>
+    applyDecision((s) => buyAsset(s, assetId));
+  const handleJoinPlatform = (platformId: SocialPlatformId) =>
+    applyDecision((s) => joinPlatform(s, platformId));
+  const handlePost = (platformId: SocialPlatformId, kind: PostKind) =>
+    applyDecision((s) => makePost(s, platformId, kind));
+
   const handleExit = () => {
     setState(null);
     setChosen([]);
@@ -279,6 +303,10 @@ export default function App() {
               onChangePosition={handleChangePosition}
               onTransferSchool={handleTransferSchool}
               onReclassify={handleReclassify}
+              onInteract={handleInteract}
+              onBuy={handleBuy}
+              onJoinPlatform={handleJoinPlatform}
+              onPost={handlePost}
             />
           )}
 

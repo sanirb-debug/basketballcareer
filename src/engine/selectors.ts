@@ -35,8 +35,11 @@ import {
 import { SCHOOLS, SCHOOL_TIERS, isMiddleSchool } from './school';
 import type {
   CareerStage,
+  OwnedAsset,
   PathOption,
+  Person,
   Program,
+  SocialAccount,
   Academics,
   Attributes,
   Body,
@@ -249,6 +252,10 @@ export interface PublicView {
   recruiting: RecruitingView;
   rankings: RankingsView;
   relationships: RelationshipRow[];
+  /** The named people behind those buckets (SPEC §6). */
+  people: Person[];
+  assets: OwnedAsset[];
+  social: SocialAccount[];
   pendingEvent: PendingEventView | null;
   choices: BigChoices;
   stage: CareerStage;
@@ -351,6 +358,9 @@ export function toPublicView(state: GameState): PublicView {
       level: Math.round(state.relationships[id].level),
       active: state.relationships[id].active,
     })),
+    people: state.people,
+    assets: state.assets,
+    social: state.social,
     pendingEvent: toPendingEvent(state),
     choices: {
       canChangePosition: canChangePosition(state),

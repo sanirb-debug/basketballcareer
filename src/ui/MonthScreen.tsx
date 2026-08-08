@@ -5,8 +5,11 @@ import type {
   MonthAction,
   Position,
   SchoolTier,
+  SocialPlatformId,
   TrainingState,
 } from '../engine/types';
+import type { InteractionId } from '../engine/people';
+import type { PostKind } from '../engine/activities';
 import ActionPicker from './ActionPicker';
 import GamesPanel from './GamesPanel';
 import RecruitingPanel from './RecruitingPanel';
@@ -16,6 +19,8 @@ import CareerArchive from './CareerArchive';
 import CareerPanel from './CareerPanel';
 import BigChoicesPanel from './BigChoicesPanel';
 import AttributesPanel from './AttributesPanel';
+import PeoplePanel from './PeoplePanel';
+import ActivitiesPanel from './ActivitiesPanel';
 
 /**
  * The month screen (SPEC §17), which deliberately changes shape by season
@@ -34,6 +39,8 @@ type Tab =
   | 'career'
   | 'recruiting'
   | 'rankings'
+  | 'people'
+  | 'activities'
   | 'life'
   | 'archive';
 
@@ -59,6 +66,10 @@ interface Props {
   onChangePosition: (position: Position) => void;
   onTransferSchool: (tier: SchoolTier) => void;
   onReclassify: () => void;
+  onInteract: (personId: string, interaction: InteractionId) => void;
+  onBuy: (assetId: string) => void;
+  onJoinPlatform: (platformId: SocialPlatformId) => void;
+  onPost: (platformId: SocialPlatformId, kind: PostKind) => void;
 }
 
 interface PhaseSkin {
@@ -136,6 +147,10 @@ export default function MonthScreen({
   onChangePosition,
   onTransferSchool,
   onReclassify,
+  onInteract,
+  onBuy,
+  onJoinPlatform,
+  onPost,
 }: Props) {
   const [tab, setTab] = useState<Tab>('month');
   const inHighSchool = view.stage === 'highschool';
@@ -197,6 +212,12 @@ export default function MonthScreen({
               : {}),
           },
         ])),
+    {
+      id: 'people',
+      label: 'People',
+      badge: String(view.people.filter((p) => p.active).length),
+    },
+    { id: 'activities', label: 'Activities' },
     { id: 'life', label: 'Life' },
     { id: 'archive', label: 'Archive' },
   ];
@@ -441,6 +462,26 @@ export default function MonthScreen({
           />
         )}
         {tab === 'rankings' && <RankingsPanel view={view} />}
+        {tab === 'people' && (
+          <PeoplePanel
+            people={view.people}
+            monthsElapsed={view.monthsElapsed}
+            money={view.money}
+            onInteract={onInteract}
+          />
+        )}
+        {tab === 'activities' && (
+          <ActivitiesPanel
+            money={view.money}
+            stage={view.stage}
+            assets={view.assets}
+            social={view.social}
+            monthsElapsed={view.monthsElapsed}
+            onBuy={onBuy}
+            onJoin={onJoinPlatform}
+            onPost={onPost}
+          />
+        )}
         {tab === 'life' && <LifePanel view={view} />}
         {tab === 'archive' && (
           <CareerArchive view={view} exportText={exportText} />

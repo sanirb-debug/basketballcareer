@@ -38,6 +38,8 @@ import { advanceHype, offeredAauTier } from './hype';
 import { exposureForState } from './origin';
 import { advanceRecruiting } from './recruiting';
 import { advanceRelationships, coachTrustBonus } from './relationships';
+import { agePeople } from './people';
+import { assetEffects, driftFollowers } from './activities';
 import { selectEvent } from './events/engine';
 import { resolveEnding } from './endings';
 import type {
@@ -139,9 +141,13 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   const ageNow = ageInMonths(clock, state.player.birthYear, state.player.birthMonth);
   const count = (id: string) => chosen.filter((a) => a.id === id).length;
 
+  // Everything the player owns, folded into one set of multipliers. Bought
+  // once, felt every month afterwards (SPEC §6).
+  const gear = assetEffects(state.assets);
+
   // --- 1. Training -------------------------------------------------------
   const regenerated = clamp(
-    state.condition.energy + TRAINING.PASSIVE_ENERGY_REGEN,
+    state.condition.energy + TRAINING.PASSIVE_ENERGY_REGEN + gear.energyPerMonth,
     TRAINING.ENERGY_MIN,
     TRAINING.ENERGY_MAX,
   );
@@ -156,6 +162,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
       workEthic: state.player.hiddenMeta.workEthic,
       coachQuality: state.school.coachQuality,
       energy: regenerated,
+      equipmentBonus: gear.trainingBonus,
     },
     rng,
   );
@@ -222,6 +229,10 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   );
   for (const text of hypeResult.notes) note('hype', text);
 
+  // A foundation, a house with a helicopter shot — the visible stuff keeps
+  // your name in circulation on its own.
+  const hypeLevel = clamp(hypeResult.hype + gear.hypePerMonth, 0, 100);
+
   // --- 5. The class moves whether you did anything or not (SPEC §11) -----
   // The recruiting class only matters while you are being recruited.
   const prospects = inHighSchool ? advanceClass(state.prospects, rng) : state.prospects;
@@ -230,7 +241,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     position: state.player.position,
     homeState: state.origin.homeState,
     rating: overallFor(applied.attributes, state.player.position),
-    hype: hypeResult.hype,
+    hype: hypeLevel,
   };
   const nationalRank = playerRank(prospects, playerEntry);
 
@@ -238,7 +249,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   let aauTier = state.hype.aauTier;
   if (clock.month === 3) {
     const offered = offeredAauTier(
-      hypeResult.hype,
+      hypeLevel,
       nationalRank,
       state.origin.incomeTier,
       state.money,
@@ -259,7 +270,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     state.recruiting,
     {
       nationalRank,
-      hype: hypeResult.hype,
+      hype: hypeLevel,
       position: state.player.position,
       eligibility: academicResult.academics.status,
       offCourt: state.reputation.offCourt,
@@ -314,7 +325,9 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     const roll = rollInjury(
       rng,
       energy,
-      state.player.hiddenMeta.injuryProneness,
+      // Recovery boots and a private chef do not make you unbreakable, but
+      // they move the number. `assetEffects` floors the multiplier at 0.72.
+      state.player.hiddenMeta.injuryProneness * gear.injuryFactor,
       played.minutesLoad,
     );
     if (roll.injury) {
@@ -430,7 +443,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     history,
     academics: academicResult.academics,
     hype: {
-      hype: hypeResult.hype,
+      hype: hypeLevel,
       nationalRank,
       previousRank: state.hype.nationalRank,
       aauTier,
@@ -438,6 +451,11 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     },
     prospects,
     relationships,
+    // The named people drift apart when nothing is done about it, and the
+    // accounts drift when you go quiet. Both are the same idea: a thing you
+    // built has to be maintained (SPEC §6, §12).
+    people: agePeople(state.people, monthsElapsed),
+    social: driftFollowers(state.social, monthsElapsed, hypeResult.hype),
     recruiting: recruitingResult.recruiting,
     events: { ...state.events, flags: eventFlags },
     money,

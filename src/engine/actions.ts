@@ -328,6 +328,12 @@ export interface TrainingContext {
   coachQuality: number;
   /** Energy at the moment the action is performed. */
   energy: number;
+  /**
+   * Multiplier from things the player owns — a hoop in the driveway, a
+   * trainer on retainer (SPEC §6). Defaults to 1 so callers that do not care
+   * are unaffected.
+   */
+  equipmentBonus?: number;
 }
 
 export interface ApplyActionsResult {
@@ -373,6 +379,7 @@ export function applyActions(
   const potF = potentialTrainingFactor(context.potential);
   const coachF = coachTrainingFactor(context.coachQuality);
   const ethicF = workEthicFactor(context.workEthic);
+  const gearF = clamp(context.equipmentBonus ?? 1, 1, 1.45);
 
   // Repeats *within* a month walk the same diminishing curve as repeats across
   // months. Without this, stacking four Shooting sessions into one offseason
@@ -403,6 +410,7 @@ export function applyActions(
         coachF *
         ethicF *
         energyF *
+        gearF *
         headroom *
         dim *
         jitter;

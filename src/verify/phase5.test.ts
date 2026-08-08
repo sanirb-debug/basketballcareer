@@ -33,31 +33,63 @@ const INPUT: CreationInput = {
   schoolTier: 'public',
 };
 
+/** The ordering of the top of the class, as a comparable fingerprint. */
+function topOrder(state: GameState): string {
+  return rankBoard(state.prospects, {
+    name: state.player.name,
+    position: state.player.position,
+    homeState: state.origin.homeState,
+    rating: 0,
+    hype: 0,
+  })
+    .slice(0, 40)
+    .map((p) => p.id)
+    .join('|');
+}
+
 describe('the spec assertion: the board moves on its own (SPEC §18 Phase 5)', () => {
   test('rankings shift month to month with no player input at all', () => {
     // Checked across seeds rather than one lucky run: a single seed's board
     // can legitimately be quiet for a stretch.
+    //
+    // The player's own rank is a deliberately *secondary* instrument here. A
+    // 13-year-old who does nothing for a year sinks to the bottom of a
+    // 400-prospect class, and a rank pinned at the floor cannot move by
+    // definition — that is the system working, not the board standing still.
+    // So the primary assertion reads the board's own ordering, and the rank
+    // check skips the floored case.
     let movedInEverySeed = true;
     let totalDistinct = 0;
+    let rankSeeds = 0;
 
     for (let seed = 1; seed <= 6; seed++) {
       let state = createGame(seed, INPUT);
       const ranks: number[] = [state.hype.nationalRank];
+      const orders = new Set<string>([topOrder(state)]);
 
       // Twelve months of doing absolutely nothing.
       for (let i = 0; i < 12; i++) {
         state = autoTick(state, []);
         ranks.push(state.hype.nationalRank);
+        orders.add(topOrder(state));
       }
 
-      const distinct = new Set(ranks).size;
-      totalDistinct += distinct;
-      if (distinct < 2) movedInEverySeed = false;
+      // The class reshuffles above the player every single month.
+      expect(orders.size).toBeGreaterThan(6);
+
+      // The floor is the class plus the player himself.
+      const floor = state.prospects.length + 1;
+      if (ranks.some((r) => r < floor)) {
+        rankSeeds++;
+        totalDistinct += new Set(ranks).size;
+        if (new Set(ranks).size < 2) movedInEverySeed = false;
+      }
     }
 
+    expect(rankSeeds).toBeGreaterThan(3);
     expect(movedInEverySeed).toBe(true);
     // And on average the board is genuinely restless, not nudging once.
-    expect(totalDistinct / 6).toBeGreaterThan(3);
+    expect(totalDistinct / rankSeeds).toBeGreaterThan(3);
   });
 
   test('the other 400 prospects move whether or not the player does', () => {

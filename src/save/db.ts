@@ -1,5 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { SCHEMA_VERSION, type GameState } from '../engine/types';
+import { createRng, seedToState } from '../engine/rng';
+import { initialPeople } from '../engine/people';
 
 /**
  * IndexedDB persistence (SPEC §16.1) — in place from the first commit, because
@@ -55,15 +57,60 @@ export function isValidSlot(slot: number): slot is SlotId {
 }
 
 /**
+ * One step up the schema ladder.
+ *
+ * Keyed by the version being migrated *from*, so `migrate` can walk a save
+ * forward one version at a time rather than needing a case per pair.
+ */
+type Step = (state: GameState) => GameState;
+
+const STEPS: Record<number, Step> = {
+  /**
+   * v5 → v6: the life layer arrives (SPEC §6, §12).
+   *
+   * All three fields are additive, so a career in progress can be carried
+   * forward rather than thrown away. The household is regenerated from the
+   * save's own seed — deterministic, and it never touches `rngState`, so the
+   * run stays reproducible from the month it resumes.
+   */
+  5: (state) => {
+    const rng = createRng(seedToState((state.seed ^ 0x5f6c7d) >>> 0));
+    const years = Math.floor(state.monthsElapsed / 12);
+    const people = initialPeople(
+      rng,
+      state.player.name,
+      state.origin.familyStructure,
+    ).map((person) => ({ ...person, age: person.age + years }));
+
+    return { ...state, schemaVersion: 6, people, assets: [], social: [] };
+  },
+};
+
+/**
  * Bring a stored record up to the current schema.
  *
- * Deliberately throws on anything unrecognized rather than best-effort loading
- * a mismatched save — a save that loads *almost* correctly is far worse to
- * debug than one that refuses.
+ * Walks one version at a time and throws the moment there is no step for the
+ * version in hand. Best-effort loading a mismatched save is far worse to
+ * debug than one that refuses — but a save that *can* be carried forward
+ * should be, because on the other side of this is somebody's career.
  */
 export function migrate(record: SaveRecord): GameState {
-  if (record.schemaVersion === SCHEMA_VERSION) return record.state;
-  throw new Error(
-    `Unsupported save schema v${record.schemaVersion} (this build reads v${SCHEMA_VERSION})`,
-  );
+  let state = record.state;
+  let version = record.schemaVersion;
+
+  while (version !== SCHEMA_VERSION) {
+    const step = STEPS[version];
+    if (!step) {
+      throw new Error(
+        `Unsupported save schema v${record.schemaVersion} (this build reads v${SCHEMA_VERSION})`,
+      );
+    }
+    state = step(state);
+    if (state.schemaVersion === version) {
+      throw new Error(`Migration from v${version} did not advance the version`);
+    }
+    version = state.schemaVersion;
+  }
+
+  return state;
 }

@@ -1,7 +1,7 @@
 import type { RngState } from './rng';
 
 /** Bump when the shape of `GameState` changes in a way old saves can't satisfy. */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export type Position = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 export const POSITIONS: readonly Position[] = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -387,6 +387,65 @@ export interface Relationship {
 
 export type Relationships = Record<RelationshipId, Relationship>;
 
+/**
+ * A named individual (SPEC §6's "BitLife-style interaction menu per
+ * relationship").
+ *
+ * The `Relationships` record above is the aggregate the event system reads;
+ * these are the actual people underneath it, each with their own name, age
+ * and opinion of you.
+ */
+export type PersonRole =
+  | 'father'
+  | 'mother'
+  | 'sibling'
+  | 'friend'
+  | 'partner'
+  | 'ex'
+  | 'coach'
+  | 'trainer'
+  | 'teammate'
+  | 'agent'
+  | 'rival';
+
+export interface Person {
+  id: string;
+  name: string;
+  role: PersonRole;
+  age: number;
+  /** 0–100, same scale as the aggregate bucket they feed. */
+  relationship: number;
+  alive: boolean;
+  active: boolean;
+  /** `monthsElapsed` of the last interaction; one per person per month. */
+  lastInteractionMonth: number;
+}
+
+// --- Things you own and post (SPEC §6, §12) -------------------------------
+
+export interface OwnedAsset {
+  /** Catalog id from `assets.ts`. */
+  id: string;
+  purchasedMonth: number;
+  price: number;
+}
+
+export type SocialPlatformId =
+  | 'instagram'
+  | 'tiktok'
+  | 'youtube'
+  | 'x'
+  | 'twitch';
+
+export interface SocialAccount {
+  id: SocialPlatformId;
+  followers: number;
+  joinedMonth: number;
+  lastPostMonth: number;
+  /** Lifetime posts that broke out. */
+  viralPosts: number;
+}
+
 // --- Recruiting (SPEC §10) ------------------------------------------------
 
 export type ProgramTier =
@@ -641,7 +700,8 @@ export type LogKind =
   | 'coach'
   | 'academics'
   | 'hype'
-  | 'recruiting';
+  | 'recruiting'
+  | 'life';
 
 export interface LogEntry {
   monthsElapsed: number;
@@ -694,6 +754,12 @@ export interface GameState {
   /** The ~400-prospect class the player is ranked inside (SPEC §11). */
   prospects: Prospect[];
   relationships: Relationships;
+  /** The named people behind the aggregate buckets (SPEC §6). */
+  people: Person[];
+  /** Everything bought with the money (SPEC §6's money sinks). */
+  assets: OwnedAsset[];
+  /** Social accounts, which convert on-court results into reach (SPEC §12). */
+  social: SocialAccount[];
   recruiting: RecruitingState;
   events: EventState;
   /** Dollars. Income from family and jobs; spent on camps and trainers. */
