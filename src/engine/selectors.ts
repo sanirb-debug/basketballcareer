@@ -33,6 +33,14 @@ import {
   transferOptions,
 } from './decisions';
 import { SCHOOLS, SCHOOL_TIERS, isMiddleSchool } from './school';
+import {
+  describeDistraction,
+  fameFor,
+  nightlifeUnlocked,
+  nightsFor,
+  type NightDef,
+} from './nightlife';
+import { totalFollowers } from './activities';
 import type {
   CareerStage,
   OwnedAsset,
@@ -256,6 +264,19 @@ export interface PublicView {
   people: Person[];
   assets: OwnedAsset[];
   social: SocialAccount[];
+  /** The off-court life (SPEC §6). Locked until the player is an adult. */
+  nightlife: {
+    unlocked: boolean;
+    distraction: number;
+    label: string;
+    nightsThisMonth: number;
+    nightsOut: number;
+    tabloidStories: number;
+    /** How visible you are, which is what turns a night into a story. */
+    fame: number;
+    nights: NightDef[];
+    partner: Person | null;
+  };
   pendingEvent: PendingEventView | null;
   choices: BigChoices;
   stage: CareerStage;
@@ -361,6 +382,7 @@ export function toPublicView(state: GameState): PublicView {
     people: state.people,
     assets: state.assets,
     social: state.social,
+    nightlife: toNightlifeView(state, months / 12),
     pendingEvent: toPendingEvent(state),
     choices: {
       canChangePosition: canChangePosition(state),
@@ -601,5 +623,33 @@ function toProView(state: GameState): ProView | null {
         losses: t.losses,
         conference: t.conference,
       })),
+  };
+}
+
+/**
+ * The off-court panel's data.
+ *
+ * `fame` is surfaced deliberately: the player has to be able to see that the
+ * same night is a different bet at nineteen than it is at twenty-six.
+ */
+function toNightlifeView(
+  state: GameState,
+  ageYears: number,
+): PublicView['nightlife'] {
+  return {
+    unlocked: nightlifeUnlocked(ageYears),
+    distraction: Math.round(state.nightlife.distraction),
+    label: describeDistraction(state.nightlife.distraction),
+    nightsThisMonth: state.nightlife.nightsThisMonth,
+    nightsOut: state.nightlife.nightsOut,
+    tabloidStories: state.nightlife.tabloidStories,
+    fame: Math.round(
+      fameFor(state.stage, state.hype.hype, totalFollowers(state.social)),
+    ),
+    nights: nightsFor(state.stage, ageYears),
+    partner:
+      state.people.find(
+        (p) => p.active && (p.role === 'partner' || p.role === 'fling'),
+      ) ?? null,
   };
 }

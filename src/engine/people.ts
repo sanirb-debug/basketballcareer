@@ -42,11 +42,13 @@ export const ROLE_LABEL: Record<PersonRole, string> = {
   sibling: 'Sibling',
   friend: 'Friend',
   partner: 'Partner',
+  fling: 'Seeing',
   ex: 'Ex',
   coach: 'Coach',
   trainer: 'Trainer',
   teammate: 'Teammate',
   agent: 'Agent',
+  child: 'Child',
   rival: 'Rival',
 };
 
@@ -57,11 +59,13 @@ export const ROLE_CATEGORY: Record<PersonRole, RelationshipId> = {
   sibling: 'parents',
   friend: 'friends',
   partner: 'girlfriend',
+  fling: 'girlfriend',
   ex: 'friends',
   coach: 'hsCoach',
   trainer: 'trainer',
   teammate: 'friends',
   agent: 'trainer',
+  child: 'parents',
   rival: 'friends',
 };
 
@@ -94,6 +98,7 @@ export function makePerson(
     alive: true,
     active: true,
     lastInteractionMonth: -1,
+    interactionsThisMonth: 0,
   };
 }
 
@@ -165,6 +170,8 @@ export type InteractionId =
   | 'advice'
   | 'argue'
   | 'dateNight'
+  | 'stayIn'
+  | 'commit'
   | 'breakUp';
 
 export interface InteractionDef {
@@ -175,6 +182,8 @@ export interface InteractionDef {
   cost: number;
   /** Roles this is offered for. Empty means everyone. */
   roles?: PersonRole[];
+  /** Gate for anything that belongs to an adult life. */
+  minAge?: number;
 }
 
 export const INTERACTIONS: InteractionDef[] = [
@@ -195,19 +204,41 @@ export const INTERACTIONS: InteractionDef[] = [
     label: 'Date night',
     detail: 'Somewhere with tablecloths.',
     cost: 90,
-    roles: ['partner'],
+    roles: ['partner', 'fling'],
+  },
+  {
+    id: 'stayIn',
+    label: 'Stay in',
+    detail: 'No cameras, no reservation, nowhere to be.',
+    cost: 0,
+    roles: ['partner', 'fling'],
+    minAge: 18,
+  },
+  {
+    id: 'commit',
+    label: 'Make it serious',
+    detail: 'Say the thing out loud and mean it.',
+    cost: 0,
+    roles: ['fling'],
+    minAge: 18,
   },
   {
     id: 'breakUp',
-    label: 'Break up',
-    detail: 'End it.',
+    label: 'End it',
+    detail: 'Say it to their face.',
     cost: 0,
-    roles: ['partner'],
+    roles: ['partner', 'fling'],
   },
 ];
 
-export function interactionsFor(role: PersonRole): InteractionDef[] {
-  return INTERACTIONS.filter((i) => !i.roles || i.roles.includes(role));
+export function interactionsFor(
+  role: PersonRole,
+  ageYears = 99,
+): InteractionDef[] {
+  return INTERACTIONS.filter(
+    (i) =>
+      (!i.roles || i.roles.includes(role)) && ageYears >= (i.minAge ?? 0),
+  );
 }
 
 export interface InteractionResult {
@@ -216,9 +247,29 @@ export interface InteractionResult {
   categoryDelta: number;
   moneyDelta: number;
   energyDelta: number;
+  /** Nights in with someone pull you back toward the middle. */
+  distractionDelta: number;
   outcome: string;
   /** Set when the person should be moved to ex / removed. */
   ended: boolean;
+  /** Set when a fling became something you would call by a name. */
+  committed: boolean;
+}
+
+/**
+ * How much the *n*-th visit of the month is worth.
+ *
+ * There is no cap on interactions — this is a life, not a turn economy, and
+ * you can call your mother every day of March if that is who you are. What
+ * there is instead is honesty about it: the fourth conversation in a month is
+ * not worth what the first was, and the tenth is worth almost nothing. Money
+ * costs, by contrast, are charged in full every single time, which is what
+ * stops "buy her nine gifts" from being a strategy.
+ */
+export const INTERACTION_FALLOFF = 0.55;
+
+export function repeatValue(repeats: number): number {
+  return Math.pow(INTERACTION_FALLOFF, Math.max(0, repeats));
 }
 
 /**
@@ -234,28 +285,54 @@ export function interact(
   monthsElapsed: number,
   rng: Rng,
 ): InteractionResult {
-  const base = (amount: number) => clamp(amount + rng.float(-1.5, 1.5), -40, 40);
-  const touch = (delta: number, outcome: string, extra: Partial<InteractionResult> = {}) => ({
+  // Repeats inside the same month walk down the curve. The first one is
+  // full price; everything after is the same gesture getting quieter.
+  const repeats =
+    person.lastInteractionMonth === monthsElapsed
+      ? person.interactionsThisMonth
+      : 0;
+  const falloff = repeatValue(repeats);
+
+  const base = (amount: number) =>
+    clamp((amount + rng.float(-1.5, 1.5)) * falloff, -40, 40);
+
+  const touch = (
+    delta: number,
+    outcome: string,
+    extra: Partial<InteractionResult> = {},
+  ): InteractionResult => ({
     person: {
       ...person,
       relationship: clamp(person.relationship + delta, 0, 100),
       lastInteractionMonth: monthsElapsed,
+      interactionsThisMonth: repeats + 1,
     },
     categoryDelta: delta * 0.5,
     moneyDelta: 0,
     energyDelta: 0,
+    distractionDelta: 0,
     outcome,
     ended: false,
+    committed: false,
     ...extra,
   });
 
+  // Said out loud once the gesture has stopped meaning anything, so the
+  // player can see the curve rather than having to infer it.
+  const thin = repeats >= 3;
+
   switch (interaction) {
     case 'talk':
-      return touch(base(5), `You and ${person.name} actually talked.`);
+      return touch(
+        base(5),
+        thin
+          ? `${person.name} has heard most of this already today.`
+          : `You and ${person.name} actually talked.`,
+      );
 
     case 'compliment': {
       // Constant flattery stops landing.
-      const worn = person.relationship > 85;
+      const worn = person.relationship > 85 || thin;
       return touch(
         worn ? base(1) : base(6),
         worn
@@ -265,19 +342,29 @@ export function interact(
     }
 
     case 'spendTime':
-      return touch(base(9), `You spent real time with ${person.name}.`, {
-        energyDelta: -4,
-      });
+      return touch(
+        base(9),
+        thin
+          ? `Another afternoon with ${person.name}. Comfortable, and quiet.`
+          : `You spent real time with ${person.name}.`,
+        { energyDelta: -4, distractionDelta: -1 },
+      );
 
     case 'gift':
-      return touch(base(11), `${person.name} was not expecting a gift.`, {
-        moneyDelta: -120,
-      });
+      return touch(
+        base(11),
+        thin
+          ? `${person.name} thanked you and set it down with the others.`
+          : `${person.name} was not expecting a gift.`,
+        { moneyDelta: -120 },
+      );
 
     case 'advice':
       return touch(
         base(6),
-        `${person.name} told you something worth keeping.`,
+        thin
+          ? `${person.name} told you the same thing, more slowly.`
+          : `${person.name} told you something worth keeping.`,
       );
 
     case 'argue': {
@@ -296,21 +383,67 @@ export function interact(
         energyDelta: -5,
       });
 
+    case 'stayIn':
+      // Deliberately the *opposite* of a night out: it is the one thing on
+      // any menu in this game that lowers distraction and raises the
+      // relationship at the same time. Staying home with someone who knows
+      // you is how players survive a decade of this.
+      return touch(
+        base(12),
+        thin
+          ? `Another quiet one in with ${person.name}. Nobody is counting.`
+          : `A night in with ${person.name}. Phone face down, nowhere to be.`,
+        { energyDelta: 3, distractionDelta: -7 },
+      );
+
+    case 'commit':
+      return {
+        person: {
+          ...person,
+          role: 'partner',
+          exclusive: true,
+          relationship: clamp(person.relationship + 12, 0, 100),
+          lastInteractionMonth: monthsElapsed,
+          interactionsThisMonth: repeats + 1,
+        },
+        categoryDelta: 10,
+        moneyDelta: 0,
+        energyDelta: 0,
+        distractionDelta: -10,
+        outcome: `You and ${person.name} stopped pretending it was casual.`,
+        ended: false,
+        committed: true,
+      };
+
     case 'breakUp':
       return {
-        person: { ...person, role: 'ex', relationship: clamp(person.relationship - 45, 0, 100), lastInteractionMonth: monthsElapsed },
+        person: {
+          ...person,
+          role: 'ex',
+          exclusive: false,
+          relationship: clamp(person.relationship - 45, 0, 100),
+          lastInteractionMonth: monthsElapsed,
+          interactionsThisMonth: repeats + 1,
+        },
         categoryDelta: -25,
         moneyDelta: 0,
         energyDelta: 0,
-        outcome: `You and ${person.name} broke up.`,
+        distractionDelta: 4,
+        outcome: `You and ${person.name} are done.`,
         ended: true,
+        committed: false,
       };
   }
 }
 
-/** One interaction per person per month keeps this from becoming a clicker. */
-export function canInteract(person: Person, monthsElapsed: number): boolean {
-  return person.alive && person.lastInteractionMonth !== monthsElapsed;
+/**
+ * Whether this person is reachable at all.
+ *
+ * There is no per-month limit any more — the only people you cannot go to are
+ * the ones who are gone.
+ */
+export function canInteract(person: Person): boolean {
+  return person.alive && person.active;
 }
 
 /** People drift apart when nothing is done about it (SPEC §6). */
@@ -323,6 +456,8 @@ export function agePeople(people: Person[], monthsElapsed: number): Person[] {
       // A year of months; ages tick over annually.
       age: monthsElapsed % 12 === 0 ? person.age + 1 : person.age,
       relationship: clamp(person.relationship - (neglected ? 0.9 : 0.3), 0, 100),
+      // A fresh month is a fresh curve.
+      interactionsThisMonth: 0,
     };
   });
 }

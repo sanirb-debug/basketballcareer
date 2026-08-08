@@ -20,6 +20,7 @@ import {
   ROLE_CATEGORY,
   canInteract,
   interactionsFor,
+  repeatValue,
 } from '../engine/people';
 import {
   buyAsset,
@@ -111,21 +112,58 @@ describe('the people are people (SPEC §6)', () => {
     expect(interactionsFor('partner').some((i) => i.id === 'dateNight')).toBe(true);
   });
 
-  test('one interaction per person per month, and the engine enforces it', () => {
-    const state = createGame(7, INPUT);
-    const target = state.people[0];
+  test('there is no monthly ration — you can go to someone as often as you like', () => {
+    let state = createGame(7, INPUT);
+    const targetId = state.people[0].id;
 
-    const after = interactWith(state, target.id, 'talk');
-    const updated = after.people.find((p) => p.id === target.id)!;
-    expect(updated.lastInteractionMonth).toBe(after.monthsElapsed);
-    expect(canInteract(updated, after.monthsElapsed)).toBe(false);
+    // Ten conversations inside one month. None of them are refused.
+    for (let i = 0; i < 10; i++) {
+      state = interactWith(state, targetId, 'talk');
+    }
 
-    expect(() => interactWith(after, target.id, 'talk')).toThrow(DecisionError);
+    const person = state.people.find((p) => p.id === targetId)!;
+    expect(person.interactionsThisMonth).toBe(10);
+    expect(person.lastInteractionMonth).toBe(state.monthsElapsed);
+    expect(canInteract(person)).toBe(true);
 
-    // The clock ticking over opens it back up.
-    const nextMonth = autoTick(after, []);
-    const later = nextMonth.people.find((p) => p.id === target.id)!;
-    expect(canInteract(later, nextMonth.monthsElapsed)).toBe(true);
+    // And the counter resets with the calendar.
+    const nextMonth = autoTick(state, []);
+    const later = nextMonth.people.find((p) => p.id === targetId)!;
+    expect(later.interactionsThisMonth).toBe(0);
+  });
+
+  test('repeats inside a month walk down a curve instead of paying full rate', () => {
+    let state = createGame(13, INPUT);
+    const targetId = state.people[0].id;
+    const deltas: number[] = [];
+
+    for (let i = 0; i < 6; i++) {
+      const before = state.people.find((p) => p.id === targetId)!.relationship;
+      state = interactWith(state, targetId, 'spendTime');
+      const after = state.people.find((p) => p.id === targetId)!.relationship;
+      deltas.push(after - before);
+    }
+
+    // The first is worth several of the later ones.
+    expect(deltas[0]).toBeGreaterThan(deltas[3]);
+    expect(deltas[5]).toBeLessThan(deltas[0] * 0.35);
+
+    // And the whole month of spamming is bounded — it cannot replace six
+    // months of actually showing up.
+    const total = deltas.reduce((a, b) => a + b, 0);
+    expect(total).toBeLessThan(deltas[0] * 2.6);
+    expect(repeatValue(0)).toBe(1);
+    expect(repeatValue(4)).toBeLessThan(0.1);
+  });
+
+  test('money costs are charged in full every time, curve or no curve', () => {
+    let state = withMoney(createGame(14, INPUT), 1000);
+    const targetId = state.people[0].id;
+    for (let i = 0; i < 5; i++) {
+      state = interactWith(state, targetId, 'gift');
+    }
+    // Five gifts, five full prices — that is what stops spam being a strategy.
+    expect(state.money).toBe(1000 - 5 * 120);
   });
 
   test('interactions move the individual and the aggregate bucket', () => {
@@ -462,9 +500,7 @@ describe('the life layer survives the save (SPEC §16)', () => {
           state = buyAsset(state, def.id);
         }
       }
-      const someone = state.people.find((p) =>
-        canInteract(p, state.monthsElapsed),
-      );
+      const someone = state.people.find((p) => canInteract(p));
       if (someone) state = interactWith(state, someone.id, 'talk');
       if (canPost(state.social[0], state.monthsElapsed)) {
         state = makePost(state, 'tiktok', 'highlight');

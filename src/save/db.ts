@@ -2,6 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { SCHEMA_VERSION, type GameState } from '../engine/types';
 import { createRng, seedToState } from '../engine/rng';
 import { initialPeople } from '../engine/people';
+import { initialNightlife } from '../engine/nightlife';
 
 /**
  * IndexedDB persistence (SPEC §16.1) — in place from the first commit, because
@@ -84,6 +85,24 @@ const STEPS: Record<number, Step> = {
 
     return { ...state, schemaVersion: 6, people, assets: [], social: [] };
   },
+
+  /**
+   * v6 → v7: the off-court life (SPEC §6), and interactions stop being
+   * rationed one per person per month.
+   *
+   * Both are additive. A career resumes with a clean slate on the nights,
+   * which is the only honest default — the engine has no record of evenings
+   * it never simulated.
+   */
+  6: (state) => ({
+    ...state,
+    schemaVersion: 7,
+    nightlife: initialNightlife(),
+    people: state.people.map((person) => ({
+      ...person,
+      interactionsThisMonth: 0,
+    })),
+  }),
 };
 
 /**

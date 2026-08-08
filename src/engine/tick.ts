@@ -40,6 +40,7 @@ import { advanceRecruiting } from './recruiting';
 import { advanceRelationships, coachTrustBonus } from './relationships';
 import { agePeople } from './people';
 import { assetEffects, driftFollowers } from './activities';
+import { distractionEffects, settleNightlife } from './nightlife';
 import { selectEvent } from './events/engine';
 import { resolveEnding } from './endings';
 import type {
@@ -145,6 +146,10 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   // once, felt every month afterwards (SPEC §6).
   const gear = assetEffects(state.assets);
 
+  // And what the nights cost. This is the counterweight to the gear: money
+  // buys development, and the life the money buys spends it back.
+  const drag = distractionEffects(state.nightlife.distraction);
+
   // --- 1. Training -------------------------------------------------------
   const regenerated = clamp(
     state.condition.energy + TRAINING.PASSIVE_ENERGY_REGEN + gear.energyPerMonth,
@@ -162,14 +167,17 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
       workEthic: state.player.hiddenMeta.workEthic,
       coachQuality: state.school.coachQuality,
       energy: regenerated,
-      equipmentBonus: gear.trainingBonus,
+      trainingMultiplier: gear.trainingBonus * drag.trainingFactor,
     },
     rng,
   );
 
   let energy = applied.energy;
   let coachTrust = clamp(
-    state.coachTrust + applied.trustDelta + coachTrustBonus(state.relationships),
+    state.coachTrust +
+      applied.trustDelta +
+      coachTrustBonus(state.relationships) +
+      drag.trustDelta,
     COACH_TRUST.MIN,
     COACH_TRUST.MAX,
   );
@@ -327,7 +335,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
       energy,
       // Recovery boots and a private chef do not make you unbreakable, but
       // they move the number. `assetEffects` floors the multiplier at 0.72.
-      state.player.hiddenMeta.injuryProneness * gear.injuryFactor,
+      state.player.hiddenMeta.injuryProneness * gear.injuryFactor * drag.injuryFactor,
       played.minutesLoad,
     );
     if (roll.injury) {
@@ -455,7 +463,15 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     // accounts drift when you go quiet. Both are the same idea: a thing you
     // built has to be maintained (SPEC §6, §12).
     people: agePeople(state.people, monthsElapsed),
-    social: driftFollowers(state.social, monthsElapsed, hypeResult.hype),
+    social: driftFollowers(state.social, monthsElapsed, hypeLevel),
+    // Distraction clears on its own, which is what makes the nights a trade
+    // and not a death spiral. Somebody at home speeds it up.
+    nightlife: settleNightlife(state.nightlife, {
+      hasPartner: state.people.some(
+        (p) => p.active && (p.role === 'partner' || p.role === 'fling'),
+      ),
+      exclusive: state.people.some((p) => p.active && p.exclusive === true),
+    }),
     recruiting: recruitingResult.recruiting,
     events: { ...state.events, flags: eventFlags },
     money,
@@ -747,7 +763,15 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
       teamStrength: team.teamStrength,
       home: game.home,
       energy,
-      confidence: state.player.hiddenMeta.confidence,
+      // A head that is still in last night is worth points off the box
+      // score. This is the only place the nights show up where the player
+      // can actually see them.
+      confidence: clamp(
+        state.player.hiddenMeta.confidence -
+          distractionEffects(state.nightlife.distraction).confidencePenalty,
+        0,
+        100,
+      ),
       level,
     });
 

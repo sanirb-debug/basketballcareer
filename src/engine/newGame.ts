@@ -15,6 +15,7 @@ import { initialAcademics } from './academics';
 import { initialRecruiting } from './recruiting';
 import { initialRelationships } from './relationships';
 import { initialPeople } from './people';
+import { initialNightlife } from './nightlife';
 import { designateRival, generateClass, playerRank, rankingScore } from './prospects';
 import { overallFor } from './attributes';
 import {
@@ -170,6 +171,7 @@ export function createGame(
     people,
     assets: [],
     social: [],
+    nightlife: initialNightlife(),
     recruiting,
     events: { pending: null, flags: {}, fired: [], decisions: [] },
     money: origin.incomeTier === 'affluent' ? 1500 : origin.incomeTier === 'comfortable' ? 600 : 150,

@@ -17,6 +17,9 @@ import type {
   SocialAccount,
   SocialPlatformId,
 } from '../engine/types';
+import type { PublicView } from '../engine/selectors';
+import type { NightId } from '../engine/nightlife';
+import NightlifePanel from './NightlifePanel';
 
 /**
  * Activities (SPEC §6, §12) — the things to do with a month that are not a
@@ -32,6 +35,7 @@ import type {
  */
 
 interface Props {
+  view: PublicView;
   money: number;
   stage: CareerStage;
   assets: OwnedAsset[];
@@ -40,6 +44,7 @@ interface Props {
   onBuy: (assetId: string) => void;
   onJoin: (platformId: SocialPlatformId) => void;
   onPost: (platformId: SocialPlatformId, kind: PostKind) => void;
+  onGoOut: (nightId: NightId) => void;
 }
 
 const CATEGORIES: { id: AssetCategory; title: string; blurb: string }[] = [
@@ -61,6 +66,7 @@ const CATEGORIES: { id: AssetCategory; title: string; blurb: string }[] = [
 ];
 
 export default function ActivitiesPanel({
+  view,
   money,
   stage,
   assets,
@@ -69,12 +75,17 @@ export default function ActivitiesPanel({
   onBuy,
   onJoin,
   onPost,
+  onGoOut,
 }: Props) {
   const [posting, setPosting] = useState<SocialPlatformId | null>(null);
   const reach = totalFollowers(social);
 
   return (
     <div className="space-y-10">
+      {view.nightlife.unlocked && (
+        <NightlifePanel view={view} onGoOut={onGoOut} />
+      )}
+
       <section>
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h3 className="text-xs font-medium uppercase tracking-widest text-neutral-500">

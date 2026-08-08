@@ -10,6 +10,7 @@ import type {
 } from '../engine/types';
 import type { InteractionId } from '../engine/people';
 import type { PostKind } from '../engine/activities';
+import type { NightId } from '../engine/nightlife';
 import ActionPicker from './ActionPicker';
 import GamesPanel from './GamesPanel';
 import RecruitingPanel from './RecruitingPanel';
@@ -70,6 +71,7 @@ interface Props {
   onBuy: (assetId: string) => void;
   onJoinPlatform: (platformId: SocialPlatformId) => void;
   onPost: (platformId: SocialPlatformId, kind: PostKind) => void;
+  onGoOut: (nightId: NightId) => void;
 }
 
 interface PhaseSkin {
@@ -151,6 +153,7 @@ export default function MonthScreen({
   onBuy,
   onJoinPlatform,
   onPost,
+  onGoOut,
 }: Props) {
   const [tab, setTab] = useState<Tab>('month');
   const inHighSchool = view.stage === 'highschool';
@@ -467,11 +470,13 @@ export default function MonthScreen({
             people={view.people}
             monthsElapsed={view.monthsElapsed}
             money={view.money}
+            ageYears={view.ageMonths / 12}
             onInteract={onInteract}
           />
         )}
         {tab === 'activities' && (
           <ActivitiesPanel
+            view={view}
             money={view.money}
             stage={view.stage}
             assets={view.assets}
@@ -480,6 +485,7 @@ export default function MonthScreen({
             onBuy={onBuy}
             onJoin={onJoinPlatform}
             onPost={onPost}
+            onGoOut={onGoOut}
           />
         )}
         {tab === 'life' && <LifePanel view={view} />}

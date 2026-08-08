@@ -25,10 +25,12 @@ import type {
 } from './engine/types';
 import {
   buyAsset,
+  goOut,
   interactWith,
   joinPlatform,
   makePost,
 } from './engine/lifeActions';
+import type { NightId } from './engine/nightlife';
 import type { InteractionId } from './engine/people';
 import type { PostKind } from './engine/activities';
 import { hashSeedString, clamp } from './engine/rng';
@@ -218,6 +220,8 @@ export default function App() {
     applyDecision((s) => joinPlatform(s, platformId));
   const handlePost = (platformId: SocialPlatformId, kind: PostKind) =>
     applyDecision((s) => makePost(s, platformId, kind));
+  const handleGoOut = (nightId: NightId) =>
+    applyDecision((s) => goOut(s, nightId));
 
   const handleExit = () => {
     setState(null);
@@ -307,6 +311,7 @@ export default function App() {
               onBuy={handleBuy}
               onJoinPlatform={handleJoinPlatform}
               onPost={handlePost}
+              onGoOut={handleGoOut}
             />
           )}
 

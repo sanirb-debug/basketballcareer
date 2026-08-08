@@ -19,14 +19,15 @@ interface Props {
   people: Person[];
   monthsElapsed: number;
   money: number;
+  ageYears: number;
   onInteract: (personId: string, interaction: InteractionId) => void;
 }
 
 const GROUPS: { title: string; roles: PersonRole[] }[] = [
-  { title: 'Family', roles: ['father', 'mother', 'sibling'] },
+  { title: 'Family', roles: ['father', 'mother', 'sibling', 'child'] },
+  { title: 'Seeing', roles: ['partner', 'fling'] },
   { title: 'Basketball', roles: ['coach', 'trainer', 'agent', 'teammate'] },
   { title: 'Friends', roles: ['friend'] },
-  { title: 'Partner', roles: ['partner'] },
   { title: 'Rivals', roles: ['rival'] },
   { title: 'Exes', roles: ['ex'] },
 ];
@@ -42,6 +43,7 @@ export default function PeoplePanel({
   people,
   monthsElapsed,
   money,
+  ageYears,
   onInteract,
 }: Props) {
   const [open, setOpen] = useState<string | null>(null);
@@ -51,8 +53,10 @@ export default function PeoplePanel({
   return (
     <div className="space-y-8">
       <p className="text-sm text-neutral-500">
-        One interaction per person per month. Relationships fade on their own if
-        you leave them alone for half a year.
+        Go to anyone as often as you like — there is no monthly ration on a
+        life. The fourth conversation in a month just does not land like the
+        first did, and everyone fades on their own if you leave them alone for
+        half a year.
       </p>
 
       {GROUPS.map((group) => {
@@ -69,7 +73,8 @@ export default function PeoplePanel({
 
             <ul className="mt-3 divide-y divide-neutral-800 overflow-hidden rounded-lg border border-neutral-800">
               {members.map((person) => {
-                const available = canInteract(person, monthsElapsed);
+                const seen = person.lastInteractionMonth === monthsElapsed;
+                const times = seen ? person.interactionsThisMonth : 0;
                 return (
                   <li key={person.id}>
                     <button
@@ -98,12 +103,13 @@ export default function PeoplePanel({
                           </span>
                         </div>
                       </div>
-                      <span
-                        className={`shrink-0 text-xs ${
-                          available ? 'text-orange-400' : 'text-neutral-700'
-                        }`}
-                      >
-                        {available ? 'Interact →' : 'Seen this month'}
+                      <span className="shrink-0 text-right text-xs">
+                        {times > 0 && (
+                          <span className="mr-3 text-neutral-600">
+                            {times}× this month
+                          </span>
+                        )}
+                        <span className="text-orange-400">Interact →</span>
                       </span>
                     </button>
                   </li>
@@ -119,11 +125,10 @@ export default function PeoplePanel({
           person={selected}
           monthsElapsed={monthsElapsed}
           money={money}
+          ageYears={ageYears}
           onClose={() => setOpen(null)}
-          onPick={(interaction) => {
-            onInteract(selected.id, interaction);
-            setOpen(null);
-          }}
+          onPick={(interaction) => onInteract(selected.id, interaction)}
+          onDone={() => setOpen(null)}
         />
       )}
     </div>
@@ -134,16 +139,24 @@ function InteractionModal({
   person,
   monthsElapsed,
   money,
+  ageYears,
   onClose,
   onPick,
+  onDone,
 }: {
   person: Person;
   monthsElapsed: number;
   money: number;
+  ageYears: number;
   onClose: () => void;
   onPick: (interaction: InteractionId) => void;
+  onDone: () => void;
 }) {
-  const available = canInteract(person, monthsElapsed);
+  const available = canInteract(person);
+  const times =
+    person.lastInteractionMonth === monthsElapsed
+      ? person.interactionsThisMonth
+      : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
@@ -156,10 +169,11 @@ function InteractionModal({
         </div>
         <p className="mt-1 text-sm text-neutral-500">
           Age {person.age} · relationship {Math.round(person.relationship)}
+          {times > 0 && ` · ${times} time${times === 1 ? '' : 's'} this month`}
         </p>
 
         <ul className="mt-5 space-y-2">
-          {interactionsFor(person.role).map((def) => {
+          {interactionsFor(person.role, ageYears).map((def) => {
             const affordable = money >= def.cost;
             const usable = available && affordable;
             return (
@@ -167,7 +181,12 @@ function InteractionModal({
                 <button
                   type="button"
                   disabled={!usable}
-                  onClick={() => onPick(def.id)}
+                  onClick={() => {
+                    onPick(def.id);
+                    // Ending it or naming it closes the sheet; everything
+                    // else leaves it open so you can keep going.
+                    if (def.id === 'breakUp' || def.id === 'commit') onDone();
+                  }}
                   className="flex w-full items-center justify-between gap-4 rounded-lg border border-neutral-800 px-4 py-3 text-left transition hover:border-neutral-600 disabled:cursor-not-allowed disabled:border-neutral-900 disabled:text-neutral-700"
                 >
                   <span>
@@ -193,9 +212,10 @@ function InteractionModal({
           })}
         </ul>
 
-        {!available && (
+        {times >= 3 && (
           <p className="mt-4 text-sm text-amber-400">
-            You already spent time with {person.name} this month.
+            You have been round a lot this month. {person.name} is glad to see
+            you, and it is not landing the way the first one did.
           </p>
         )}
 

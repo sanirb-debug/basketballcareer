@@ -1,7 +1,7 @@
 import type { RngState } from './rng';
 
 /** Bump when the shape of `GameState` changes in a way old saves can't satisfy. */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export type Position = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 export const POSITIONS: readonly Position[] = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -401,11 +401,13 @@ export type PersonRole =
   | 'sibling'
   | 'friend'
   | 'partner'
+  | 'fling'
   | 'ex'
   | 'coach'
   | 'trainer'
   | 'teammate'
   | 'agent'
+  | 'child'
   | 'rival';
 
 export interface Person {
@@ -417,8 +419,20 @@ export interface Person {
   relationship: number;
   alive: boolean;
   active: boolean;
-  /** `monthsElapsed` of the last interaction; one per person per month. */
+  /** `monthsElapsed` of the last interaction. */
   lastInteractionMonth: number;
+  /**
+   * How many times you have gone to this person *this month*.
+   *
+   * Not a cap — you can talk to your mother nine times in March if you want.
+   * It drives diminishing returns, so the ninth conversation lands like the
+   * ninth conversation.
+   */
+  interactionsThisMonth: number;
+  /** Set on a partner you are actually committed to. */
+  exclusive?: boolean;
+  /** `monthsElapsed` this person came into the career. */
+  metMonth?: number;
 }
 
 // --- Things you own and post (SPEC §6, §12) -------------------------------
@@ -444,6 +458,29 @@ export interface SocialAccount {
   lastPostMonth: number;
   /** Lifetime posts that broke out. */
   viralPosts: number;
+}
+
+/**
+ * The off-court life (SPEC §6).
+ *
+ * The reason this is a system and not flavour text: the thing that actually
+ * ends careers at this level is rarely the jumper. It is the schedule you
+ * keep when nobody is watching. `distraction` is the number that carries that
+ * — it is fed by how you spend your nights and it is read by training, by
+ * coach trust, and by what you have left in the fourth quarter.
+ */
+export interface NightlifeState {
+  /** 0–100. High means the life outside is running the one inside. */
+  distraction: number;
+  /** Nights out this month, for the diminishing-returns curve. */
+  nightsThisMonth: number;
+  /** Lifetime, for the career summary. */
+  nightsOut: number;
+  flings: number;
+  /** Times it made the news. */
+  tabloidStories: number;
+  /** Times a partner found out. */
+  caught: number;
 }
 
 // --- Recruiting (SPEC §10) ------------------------------------------------
@@ -760,6 +797,8 @@ export interface GameState {
   assets: OwnedAsset[];
   /** Social accounts, which convert on-court results into reach (SPEC §12). */
   social: SocialAccount[];
+  /** What the nights cost you (SPEC §6). Locked until the player is an adult. */
+  nightlife: NightlifeState;
   recruiting: RecruitingState;
   events: EventState;
   /** Dollars. Income from family and jobs; spent on camps and trainers. */
