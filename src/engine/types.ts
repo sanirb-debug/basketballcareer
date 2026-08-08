@@ -1,7 +1,7 @@
 import type { RngState } from './rng';
 
 /** Bump when the shape of `GameState` changes in a way old saves can't satisfy. */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export type Position = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 export const POSITIONS: readonly Position[] = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -401,7 +401,6 @@ export type PersonRole =
   | 'sibling'
   | 'friend'
   | 'partner'
-  | 'fling'
   | 'ex'
   | 'coach'
   | 'trainer'
@@ -409,6 +408,37 @@ export type PersonRole =
   | 'agent'
   | 'child'
   | 'rival';
+
+/**
+ * How far a romance has actually gone (SPEC §6).
+ *
+ * Kept separate from `PersonRole` because the role answers "who is this to
+ * you" and this answers "how serious is it" — and the whole point of the
+ * system is that those two move independently. Someone can be your partner
+ * for six years and never get past `dating`.
+ */
+export type RomanceStage =
+  | 'flirting'
+  | 'dating'
+  | 'exclusive'
+  | 'engaged'
+  | 'married';
+
+export const ROMANCE_ORDER: RomanceStage[] = [
+  'flirting',
+  'dating',
+  'exclusive',
+  'engaged',
+  'married',
+];
+
+export function romanceAtLeast(
+  stage: RomanceStage | undefined,
+  minimum: RomanceStage,
+): boolean {
+  if (!stage) return false;
+  return ROMANCE_ORDER.indexOf(stage) >= ROMANCE_ORDER.indexOf(minimum);
+}
 
 export interface Person {
   id: string;
@@ -433,6 +463,47 @@ export interface Person {
   exclusive?: boolean;
   /** `monthsElapsed` this person came into the career. */
   metMonth?: number;
+  /** How far the romance has gone. Only ever set on a partner or an ex. */
+  romance?: RomanceStage;
+  /** How you crossed paths, kept for the People screen. */
+  metVia?: string;
+  /**
+   * Set while expecting: the `monthsElapsed` the baby arrives.
+   *
+   * Living on the person rather than in a separate register keeps the whole
+   * thing structured-clone safe and means it cannot get orphaned when a
+   * relationship ends — which, given the subject, it sometimes does.
+   */
+  dueMonth?: number;
+  /** Which parent, on a child. */
+  parentId?: string;
+}
+
+/**
+ * Somebody you have not met yet (SPEC §6).
+ *
+ * The dating pool is refreshed rather than infinite, so "who is around right
+ * now" is a real constraint — you cannot shop for a perfect match, you meet
+ * who you meet.
+ */
+export interface DatingCandidate {
+  id: string;
+  name: string;
+  age: number;
+  /** How you crossed paths. */
+  metVia: string;
+  /** One line about who they actually are. */
+  blurb: string;
+  /** 0–100. How into you they already are. */
+  interest: number;
+  /** 0–100. How well this works once the novelty is gone. */
+  compatibility: number;
+}
+
+export interface DatingState {
+  candidates: DatingCandidate[];
+  /** `monthsElapsed` the pool was last refreshed. */
+  refreshedMonth: number;
 }
 
 // --- Things you own and post (SPEC §6, §12) -------------------------------
@@ -799,6 +870,8 @@ export interface GameState {
   social: SocialAccount[];
   /** What the nights cost you (SPEC §6). Locked until the player is an adult. */
   nightlife: NightlifeState;
+  /** Who is around right now (SPEC §6). */
+  dating: DatingState;
   recruiting: RecruitingState;
   events: EventState;
   /** Dollars. Income from family and jobs; spent on camps and trainers. */

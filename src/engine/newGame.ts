@@ -172,6 +172,7 @@ export function createGame(
     assets: [],
     social: [],
     nightlife: initialNightlife(),
+    dating: { candidates: [], refreshedMonth: -1 },
     recruiting,
     events: { pending: null, flags: {}, fired: [], decisions: [] },
     money: origin.incomeTier === 'affluent' ? 1500 : origin.incomeTier === 'comfortable' ? 600 : 150,

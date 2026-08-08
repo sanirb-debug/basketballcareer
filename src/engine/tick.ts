@@ -41,6 +41,7 @@ import { advanceRelationships, coachTrustBonus } from './relationships';
 import { agePeople } from './people';
 import { assetEffects, driftFollowers } from './activities';
 import { distractionEffects, settleNightlife } from './nightlife';
+import { CHILD, childName } from './dating';
 import { selectEvent } from './events/engine';
 import { resolveEnding } from './endings';
 import type {
@@ -318,11 +319,20 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     };
   }
 
-  // --- 8. Money ----------------------------------------------------------
+  // --- 8. Money and the family (SPEC §6) ---------------------------------
+  // Children are the one recurring cost in this game that never negotiates.
+  const childCount = state.people.filter(
+    (p) => p.role === 'child' && p.alive,
+  ).length;
+
   const money =
     state.money +
     MONTHLY_INCOME[state.origin.incomeTier] +
-    count('job') * TRAINING.JOB_INCOME;
+    count('job') * TRAINING.JOB_INCOME -
+    childCount * CHILD.MONTHLY_COST;
+
+  // A baby due this month arrives this month.
+  const birth = deliverBabies(state, monthsElapsed, rng, note);
 
   // --- 9. Injury roll ----------------------------------------------------
   let injury = state.condition.injury;
@@ -462,16 +472,24 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     // The named people drift apart when nothing is done about it, and the
     // accounts drift when you go quiet. Both are the same idea: a thing you
     // built has to be maintained (SPEC §6, §12).
-    people: agePeople(state.people, monthsElapsed),
+    people: agePeople(birth.people, monthsElapsed),
     social: driftFollowers(state.social, monthsElapsed, hypeLevel),
     // Distraction clears on its own, which is what makes the nights a trade
     // and not a death spiral. Somebody at home speeds it up.
-    nightlife: settleNightlife(state.nightlife, {
-      hasPartner: state.people.some(
-        (p) => p.active && (p.role === 'partner' || p.role === 'fling'),
-      ),
+    nightlife: settleNightlife(
+      {
+        ...state.nightlife,
+        distraction: clamp(
+          state.nightlife.distraction + birth.distractionDelta,
+          0,
+          100,
+        ),
+      },
+      {
+      hasPartner: state.people.some((p) => p.active && p.role === 'partner'),
       exclusive: state.people.some((p) => p.active && p.exclusive === true),
-    }),
+      },
+    ),
     recruiting: recruitingResult.recruiting,
     events: { ...state.events, flags: eventFlags },
     money,
@@ -916,4 +934,64 @@ export function deepFreeze<T>(value: T): T {
     deepFreeze((value as Record<string, unknown>)[key]);
   }
   return value;
+}
+
+
+/**
+ * Anybody due this month arrives.
+ *
+ * Kept as its own step because a birth touches four different parts of the
+ * state and doing it inline inside `tick` would bury it. The child becomes a
+ * real person on the People screen with a name and an age, because that is
+ * the whole point of having modelled people rather than counters.
+ */
+function deliverBabies(
+  state: GameState,
+  monthsElapsed: number,
+  rng: Rng,
+  note: (kind: LogEntry['kind'], text: string) => void,
+): { people: GameState['people']; distractionDelta: number } {
+  const due = state.people.filter(
+    (p) => p.dueMonth !== undefined && p.dueMonth <= monthsElapsed,
+  );
+  if (due.length === 0) {
+    return { people: state.people, distractionDelta: 0 };
+  }
+
+  const surname = state.player.name.trim().split(/\s+/).slice(-1)[0] || 'Vale';
+  const children: GameState['people'] = [];
+  let distractionDelta = 0;
+
+  for (const parent of due) {
+    const name = childName(rng, surname);
+    children.push({
+      id: `child-${Math.floor(rng.next() * 1e9).toString(36)}`,
+      name,
+      role: 'child',
+      age: 0,
+      relationship: 90,
+      alive: true,
+      active: true,
+      lastInteractionMonth: -1,
+      interactionsThisMonth: 0,
+      metMonth: monthsElapsed,
+      parentId: parent.id,
+    });
+
+    distractionDelta += CHILD.NEWBORN_DISTRACTION;
+    note(
+      'life',
+      parent.romance === 'married'
+        ? `${name} was born. You were in the room and you did not play that week.`
+        : `${name} was born. You were in the room, which surprised some people.`,
+    );
+  }
+
+  const people = state.people.map((p) => {
+    if (p.dueMonth === undefined || p.dueMonth > monthsElapsed) return p;
+    const { dueMonth: _dropped, ...rest } = p;
+    return rest;
+  });
+
+  return { people: [...people, ...children], distractionDelta };
 }

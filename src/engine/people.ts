@@ -42,7 +42,6 @@ export const ROLE_LABEL: Record<PersonRole, string> = {
   sibling: 'Sibling',
   friend: 'Friend',
   partner: 'Partner',
-  fling: 'Seeing',
   ex: 'Ex',
   coach: 'Coach',
   trainer: 'Trainer',
@@ -59,7 +58,6 @@ export const ROLE_CATEGORY: Record<PersonRole, RelationshipId> = {
   sibling: 'parents',
   friend: 'friends',
   partner: 'girlfriend',
-  fling: 'girlfriend',
   ex: 'friends',
   coach: 'hsCoach',
   trainer: 'trainer',
@@ -169,9 +167,7 @@ export type InteractionId =
   | 'gift'
   | 'advice'
   | 'argue'
-  | 'dateNight'
   | 'stayIn'
-  | 'commit'
   | 'breakUp';
 
 export interface InteractionDef {
@@ -200,26 +196,11 @@ export const INTERACTIONS: InteractionDef[] = [
   },
   { id: 'argue', label: 'Argue', detail: 'Say the thing you have been holding.', cost: 0 },
   {
-    id: 'dateNight',
-    label: 'Date night',
-    detail: 'Somewhere with tablecloths.',
-    cost: 90,
-    roles: ['partner', 'fling'],
-  },
-  {
     id: 'stayIn',
     label: 'Stay in',
     detail: 'No cameras, no reservation, nowhere to be.',
     cost: 0,
-    roles: ['partner', 'fling'],
-    minAge: 18,
-  },
-  {
-    id: 'commit',
-    label: 'Make it serious',
-    detail: 'Say the thing out loud and mean it.',
-    cost: 0,
-    roles: ['fling'],
+    roles: ['partner'],
     minAge: 18,
   },
   {
@@ -227,7 +208,7 @@ export const INTERACTIONS: InteractionDef[] = [
     label: 'End it',
     detail: 'Say it to their face.',
     cost: 0,
-    roles: ['partner', 'fling'],
+    roles: ['partner'],
   },
 ];
 
@@ -377,12 +358,6 @@ export function interact(
       );
     }
 
-    case 'dateNight':
-      return touch(base(14), `A proper night out with ${person.name}.`, {
-        moneyDelta: -90,
-        energyDelta: -5,
-      });
-
     case 'stayIn':
       // Deliberately the *opposite* of a night out: it is the one thing on
       // any menu in this game that lowers distraction and raises the
@@ -396,31 +371,13 @@ export function interact(
         { energyDelta: 3, distractionDelta: -7 },
       );
 
-    case 'commit':
-      return {
-        person: {
-          ...person,
-          role: 'partner',
-          exclusive: true,
-          relationship: clamp(person.relationship + 12, 0, 100),
-          lastInteractionMonth: monthsElapsed,
-          interactionsThisMonth: repeats + 1,
-        },
-        categoryDelta: 10,
-        moneyDelta: 0,
-        energyDelta: 0,
-        distractionDelta: -10,
-        outcome: `You and ${person.name} stopped pretending it was casual.`,
-        ended: false,
-        committed: true,
-      };
-
     case 'breakUp':
       return {
         person: {
           ...person,
           role: 'ex',
           exclusive: false,
+          ...(person.romance ? { romance: person.romance } : {}),
           relationship: clamp(person.relationship - 45, 0, 100),
           lastInteractionMonth: monthsElapsed,
           interactionsThisMonth: repeats + 1,

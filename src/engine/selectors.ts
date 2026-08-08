@@ -34,15 +34,26 @@ import {
 } from './decisions';
 import { SCHOOLS, SCHOOL_TIERS, isMiddleSchool } from './school';
 import {
+  PARTIES,
   describeDistraction,
   fameFor,
   nightlifeUnlocked,
   nightsFor,
   type NightDef,
+  type PartyDef,
 } from './nightlife';
-import { totalFollowers } from './activities';
+import {
+  canPropose,
+  datesFor,
+  ringCost,
+  romanceUnlocked,
+  type DateDef,
+  type ProposalRequirements,
+} from './dating';
+import { hasProperty, totalFollowers } from './activities';
 import type {
   CareerStage,
+  DatingCandidate,
   OwnedAsset,
   PathOption,
   Person,
@@ -277,6 +288,21 @@ export interface PublicView {
     nights: NightDef[];
     partner: Person | null;
   };
+  /** Who is around, and where the romance actually stands (SPEC §6). */
+  romance: {
+    unlocked: boolean;
+    candidates: DatingCandidate[];
+    poolIsStale: boolean;
+    partner: Person | null;
+    stageLabel: string | null;
+    dates: DateDef[];
+    canPropose: ProposalRequirements;
+    ringCost: number;
+    expectingIn: number | null;
+    children: Person[];
+    parties: PartyDef[];
+    hasProperty: boolean;
+  };
   pendingEvent: PendingEventView | null;
   choices: BigChoices;
   stage: CareerStage;
@@ -383,6 +409,7 @@ export function toPublicView(state: GameState): PublicView {
     assets: state.assets,
     social: state.social,
     nightlife: toNightlifeView(state, months / 12),
+    romance: toRomanceView(state, months / 12),
     pendingEvent: toPendingEvent(state),
     choices: {
       canChangePosition: canChangePosition(state),
@@ -647,9 +674,53 @@ function toNightlifeView(
       fameFor(state.stage, state.hype.hype, totalFollowers(state.social)),
     ),
     nights: nightsFor(state.stage, ageYears),
-    partner:
-      state.people.find(
-        (p) => p.active && (p.role === 'partner' || p.role === 'fling'),
-      ) ?? null,
+    partner: state.people.find((p) => p.active && p.role === 'partner') ?? null,
+  };
+}
+
+
+const ROMANCE_LABEL: Record<string, string> = {
+  flirting: 'Early days',
+  dating: 'Seeing each other',
+  exclusive: 'Together',
+  engaged: 'Engaged',
+  married: 'Married',
+};
+
+/**
+ * The dating panel's data.
+ *
+ * `compatibility` is deliberately carried through to the view even though it
+ * is the hidden half of the mechanic — the UI never renders the number, and
+ * keeping it here rather than in a parallel structure is what stops the pool
+ * from needing its own lookup on every render.
+ */
+function toRomanceView(
+  state: GameState,
+  ageYears: number,
+): PublicView['romance'] {
+  const partner =
+    state.people.find((p) => p.active && p.role === 'partner') ?? null;
+
+  return {
+    unlocked: romanceUnlocked(ageYears),
+    candidates: state.dating.candidates,
+    poolIsStale:
+      state.dating.refreshedMonth >= 0 &&
+      state.monthsElapsed - state.dating.refreshedMonth > 2,
+    partner,
+    stageLabel: partner?.romance ? ROMANCE_LABEL[partner.romance] ?? null : null,
+    dates: partner ? datesFor(partner, partner.relationship) : [],
+    canPropose: partner
+      ? canPropose(partner, state.monthsElapsed, state.money)
+      : { ok: false, reason: 'Nobody to ask' },
+    ringCost: ringCost(state.money),
+    expectingIn:
+      partner?.dueMonth !== undefined
+        ? Math.max(0, partner.dueMonth - state.monthsElapsed)
+        : null,
+    children: state.people.filter((p) => p.role === 'child' && p.alive),
+    parties: PARTIES,
+    hasProperty: hasProperty(state.assets),
   };
 }

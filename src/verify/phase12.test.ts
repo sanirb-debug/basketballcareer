@@ -85,8 +85,6 @@ describe('the age gate is enforced in the engine (SPEC §6)', () => {
   test('the adult interactions are not offered to a minor either', () => {
     const minor = interactionsFor('partner', 15).map((i) => i.id);
     expect(minor).not.toContain('stayIn');
-    expect(interactionsFor('fling', 15).map((i) => i.id)).not.toContain('commit');
-
     const grown = interactionsFor('partner', 22).map((i) => i.id);
     expect(grown).toContain('stayIn');
   });
@@ -326,18 +324,18 @@ describe('fame is the multiplier on the risk (SPEC §6, §12)', () => {
 describe('who you go home with (SPEC §6)', () => {
   test('meeting somebody with nobody waiting puts them in your life', () => {
     let state = adult(18, 5_000_000);
-    for (let i = 0; i < 30 && state.people.every((p) => p.role !== 'fling'); i++) {
+    for (let i = 0; i < 30 && state.people.every((p) => p.role !== 'partner'); i++) {
       state = withMoney(goOut(state, 'club'), 5_000_000);
     }
 
-    const met = state.people.find((p) => p.role === 'fling');
+    const met = state.people.find((p) => p.role === 'partner');
     expect(met).toBeDefined();
     expect(met!.age).toBeGreaterThanOrEqual(18);
     expect(met!.metMonth).toBe(state.monthsElapsed);
     expect(state.relationships.girlfriend.active).toBe(true);
     // They show up on the People screen with a menu of their own.
     expect(toPublicView(state).people.some((p) => p.id === met!.id)).toBe(true);
-    expect(interactionsFor('fling', 21).map((i) => i.id)).toContain('commit');
+    expect(met!.romance).toBe('flirting');
   });
 
   test('everybody you meet out is an adult, across a long career', () => {
@@ -347,38 +345,30 @@ describe('who you go home with (SPEC §6)', () => {
       state = withMoney(autoTick(state, []), 20_000_000);
     }
     for (const person of state.people) {
-      if (person.role === 'fling' || person.role === 'partner') {
+      if (person.role === 'partner') {
         expect(person.age).toBeGreaterThanOrEqual(18);
       }
     }
   });
 
-  test('a fling can be made serious, and that steadies you', () => {
-    let state = adult(20, 5_000_000);
-    for (let i = 0; i < 30 && state.people.every((p) => p.role !== 'fling'); i++) {
-      state = withMoney(goOut(state, 'club'), 5_000_000);
-    }
-    const fling = state.people.find((p) => p.role === 'fling')!;
-
-    const before = state.nightlife.distraction;
-    const after = interactWith(state, fling.id, 'commit');
-    const partner = after.people.find((p) => p.id === fling.id)!;
-
-    expect(partner.role).toBe('partner');
-    expect(partner.exclusive).toBe(true);
-    expect(partner.relationship).toBeGreaterThan(fling.relationship);
-    expect(after.nightlife.distraction).toBeLessThan(before + 1);
-  });
-
   test('going home with somebody else while committed has consequences', () => {
     // Build a committed player, then send them out repeatedly.
     let state = adult(22, 20_000_000);
-    for (let i = 0; i < 40 && state.people.every((p) => p.role !== 'fling'); i++) {
+    for (let i = 0; i < 40 && state.people.every((p) => p.role !== 'partner'); i++) {
       state = withMoney(goOut(state, 'club'), 20_000_000);
     }
-    const fling = state.people.find((p) => p.role === 'fling')!;
-    state = interactWith(state, fling.id, 'commit');
-    state = { ...state, stage: 'nba', hype: { ...state.hype, hype: 95 } };
+    const fling = state.people.find((p) => p.role === 'partner')!;
+    // Promote by hand: the romance progression itself is phase 13's subject.
+    state = {
+      ...state,
+      people: state.people.map((p) =>
+        p.id === fling.id
+          ? { ...p, romance: 'exclusive' as const, exclusive: true }
+          : p,
+      ),
+      stage: 'nba',
+      hype: { ...state.hype, hype: 95 },
+    };
 
     const partnerBefore = state.people.find((p) => p.id === fling.id)!;
     for (let i = 0; i < 40; i++) {
@@ -397,19 +387,23 @@ describe('who you go home with (SPEC §6)', () => {
 
   test('a second person is not silently added while you are with someone', () => {
     let state = adult(23, 20_000_000);
-    for (let i = 0; i < 40 && state.people.every((p) => p.role !== 'fling'); i++) {
+    for (let i = 0; i < 40 && state.people.every((p) => p.role !== 'partner'); i++) {
       state = withMoney(goOut(state, 'club'), 20_000_000);
     }
-    state = interactWith(
-      state,
-      state.people.find((p) => p.role === 'fling')!.id,
-      'commit',
-    );
+    const seeing = state.people.find((p) => p.role === 'partner')!;
+    state = {
+      ...state,
+      people: state.people.map((p) =>
+        p.id === seeing.id
+          ? { ...p, romance: 'exclusive' as const, exclusive: true }
+          : p,
+      ),
+    };
 
     for (let i = 0; i < 30; i++) {
       state = withMoney(goOut(state, 'club'), 20_000_000);
       const seeing = state.people.filter(
-        (p) => p.active && (p.role === 'partner' || p.role === 'fling'),
+        (p) => p.active && p.role === 'partner',
       );
       expect(seeing.length).toBeLessThanOrEqual(1);
     }

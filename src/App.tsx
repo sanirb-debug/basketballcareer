@@ -24,13 +24,21 @@ import type {
   SocialPlatformId,
 } from './engine/types';
 import {
+  askOut,
   buyAsset,
+  goOnDate,
   goOut,
   interactWith,
   joinPlatform,
   makePost,
+  marry,
+  meetPeople,
+  propose,
+  spendTheNight,
+  throwParty,
 } from './engine/lifeActions';
-import type { NightId } from './engine/nightlife';
+import type { NightId, PartyId } from './engine/nightlife';
+import type { DateId, IntimacyId, WeddingTierId } from './engine/dating';
 import type { InteractionId } from './engine/people';
 import type { PostKind } from './engine/activities';
 import { hashSeedString, clamp } from './engine/rng';
@@ -222,6 +230,18 @@ export default function App() {
     applyDecision((s) => makePost(s, platformId, kind));
   const handleGoOut = (nightId: NightId) =>
     applyDecision((s) => goOut(s, nightId));
+  const handleMeetPeople = () => applyDecision(meetPeople);
+  const handleAskOut = (candidateId: string) =>
+    applyDecision((s) => askOut(s, candidateId));
+  const handleDate = (dateId: DateId) =>
+    applyDecision((s) => goOnDate(s, dateId));
+  const handleStayOver = (intimacy: IntimacyId) =>
+    applyDecision((s) => spendTheNight(s, intimacy));
+  const handlePropose = () => applyDecision(propose);
+  const handleMarry = (tier: WeddingTierId) =>
+    applyDecision((s) => marry(s, tier));
+  const handleParty = (partyId: PartyId) =>
+    applyDecision((s) => throwParty(s, partyId));
 
   const handleExit = () => {
     setState(null);
@@ -312,6 +332,13 @@ export default function App() {
               onJoinPlatform={handleJoinPlatform}
               onPost={handlePost}
               onGoOut={handleGoOut}
+              onMeetPeople={handleMeetPeople}
+              onAskOut={handleAskOut}
+              onDate={handleDate}
+              onStayOver={handleStayOver}
+              onPropose={handlePropose}
+              onMarry={handleMarry}
+              onParty={handleParty}
             />
           )}
 

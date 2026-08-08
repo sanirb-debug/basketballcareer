@@ -10,7 +10,8 @@ import type {
 } from '../engine/types';
 import type { InteractionId } from '../engine/people';
 import type { PostKind } from '../engine/activities';
-import type { NightId } from '../engine/nightlife';
+import type { NightId, PartyId } from '../engine/nightlife';
+import type { DateId, IntimacyId, WeddingTierId } from '../engine/dating';
 import ActionPicker from './ActionPicker';
 import GamesPanel from './GamesPanel';
 import RecruitingPanel from './RecruitingPanel';
@@ -20,6 +21,8 @@ import CareerArchive from './CareerArchive';
 import CareerPanel from './CareerPanel';
 import BigChoicesPanel from './BigChoicesPanel';
 import AttributesPanel from './AttributesPanel';
+import DatingPanel from './DatingPanel';
+import NightlifePanel from './NightlifePanel';
 import PeoplePanel from './PeoplePanel';
 import ActivitiesPanel from './ActivitiesPanel';
 
@@ -41,8 +44,10 @@ type Tab =
   | 'recruiting'
   | 'rankings'
   | 'people'
-  | 'activities'
-  | 'life'
+  | 'dating'
+  | 'nights'
+  | 'money'
+  | 'status'
   | 'archive';
 
 interface Props {
@@ -72,6 +77,13 @@ interface Props {
   onJoinPlatform: (platformId: SocialPlatformId) => void;
   onPost: (platformId: SocialPlatformId, kind: PostKind) => void;
   onGoOut: (nightId: NightId) => void;
+  onMeetPeople: () => void;
+  onAskOut: (candidateId: string) => void;
+  onDate: (dateId: DateId) => void;
+  onStayOver: (intimacy: IntimacyId) => void;
+  onPropose: () => void;
+  onMarry: (tier: WeddingTierId) => void;
+  onParty: (partyId: PartyId) => void;
 }
 
 interface PhaseSkin {
@@ -154,6 +166,13 @@ export default function MonthScreen({
   onJoinPlatform,
   onPost,
   onGoOut,
+  onMeetPeople,
+  onAskOut,
+  onDate,
+  onStayOver,
+  onPropose,
+  onMarry,
+  onParty,
 }: Props) {
   const [tab, setTab] = useState<Tab>('month');
   const inHighSchool = view.stage === 'highschool';
@@ -220,8 +239,20 @@ export default function MonthScreen({
       label: 'People',
       badge: String(view.people.filter((p) => p.active).length),
     },
-    { id: 'activities', label: 'Activities' },
-    { id: 'life', label: 'Life' },
+    ...(view.romance.unlocked
+      ? ([
+          {
+            id: 'dating' as Tab,
+            label: 'Dating',
+            ...(view.romance.partner
+              ? { badge: view.romance.stageLabel === 'Married' ? '♥' : '·' }
+              : {}),
+          },
+          { id: 'nights' as Tab, label: 'Nights' },
+        ])
+      : []),
+    { id: 'money', label: 'Money' },
+    { id: 'status', label: 'Status' },
     { id: 'archive', label: 'Archive' },
   ];
 
@@ -474,9 +505,21 @@ export default function MonthScreen({
             onInteract={onInteract}
           />
         )}
-        {tab === 'activities' && (
-          <ActivitiesPanel
+        {tab === 'dating' && (
+          <DatingPanel
             view={view}
+            onMeetPeople={onMeetPeople}
+            onAskOut={onAskOut}
+            onDate={onDate}
+            onStayOver={onStayOver}
+            onPropose={onPropose}
+            onMarry={onMarry}
+            onParty={onParty}
+          />
+        )}
+        {tab === 'nights' && <NightlifePanel view={view} onGoOut={onGoOut} />}
+        {tab === 'money' && (
+          <ActivitiesPanel
             money={view.money}
             stage={view.stage}
             assets={view.assets}
@@ -485,10 +528,9 @@ export default function MonthScreen({
             onBuy={onBuy}
             onJoin={onJoinPlatform}
             onPost={onPost}
-            onGoOut={onGoOut}
           />
         )}
-        {tab === 'life' && <LifePanel view={view} />}
+        {tab === 'status' && <LifePanel view={view} />}
         {tab === 'archive' && (
           <CareerArchive view={view} exportText={exportText} />
         )}

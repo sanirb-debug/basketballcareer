@@ -27,7 +27,7 @@ import type {
 
 // --- Assets ---------------------------------------------------------------
 
-export type AssetCategory = 'gear' | 'training' | 'life';
+export type AssetCategory = 'gear' | 'training' | 'car' | 'property';
 
 export interface AssetDef {
   id: string;
@@ -47,6 +47,8 @@ export interface AssetDef {
   hypePerMonth?: number;
   /** One-off happiness bump when bought. */
   joy?: number;
+  /** A place of your own — some things need somewhere to happen. */
+  isProperty?: boolean;
 }
 
 /**
@@ -153,62 +155,110 @@ export const ASSETS: AssetDef[] = [
     injuryFactor: 0.92,
   },
 
-  // Life — status, joy, and the thing everyone says they will do.
+  // Cars — the first one is a rite of passage, the last one is a statement.
   {
     id: 'first-car',
-    label: 'First car',
-    detail: 'It is not good. It is yours.',
-    category: 'life',
+    label: 'Your first car',
+    detail: 'It is not good. It is yours, and you will remember its smell for thirty years.',
+    category: 'car',
     price: 4200,
+    joy: 10,
+  },
+  {
+    id: 'clean-suv',
+    label: 'A clean SUV',
+    detail: 'Room for the family, the bags, and four teammates who never offer to drive.',
+    category: 'car',
+    price: 62_000,
+    from: ['college', 'overseas', 'developmental', 'nba'],
     joy: 8,
   },
   {
-    id: 'moms-house',
-    label: 'Buy your mother a house',
-    detail: 'The one you told her about when you were fourteen.',
-    category: 'life',
-    price: 640000,
-    from: ['overseas', 'developmental', 'nba'],
-    joy: 30,
-    hypePerMonth: 0.4,
+    id: 'sports-car',
+    label: 'The car from the poster',
+    detail: 'The exact one that was on your wall. You have driven it at the speed limit every day since.',
+    category: 'car',
+    price: 310_000,
+    from: ['college', 'overseas', 'developmental', 'nba'],
+    joy: 16,
+    hypePerMonth: 0.3,
+  },
+  {
+    id: 'hypercar',
+    label: 'Something absurd',
+    detail: 'Nine hundred horsepower, two seats, and a colour that has a name rather than a description.',
+    category: 'car',
+    price: 2_600_000,
+    from: ['nba'],
+    joy: 18,
+    hypePerMonth: 0.7,
+  },
+
+  // Property — where the life happens.
+  {
+    id: 'apartment',
+    label: 'Your own apartment',
+    detail: 'One bedroom, a lease with your name on it, and nobody else’s schedule in the kitchen.',
+    category: 'property',
+    price: 26_000,
+    from: ['college', 'juco', 'overseas', 'developmental', 'nba'],
+    joy: 14,
+    energyPerMonth: 2,
+    isProperty: true,
   },
   {
     id: 'condo',
     label: 'Downtown condo',
-    detail: 'Nine minutes from the arena.',
-    category: 'life',
-    price: 780000,
+    detail: 'Nine minutes from the arena, with a lift that opens into the hallway.',
+    category: 'property',
+    price: 780_000,
     from: ['overseas', 'developmental', 'nba'],
-    joy: 12,
+    joy: 16,
+    energyPerMonth: 3,
+    isProperty: true,
   },
   {
-    id: 'sports-car',
-    label: 'The car',
-    detail: 'The one from the poster on your wall.',
-    category: 'life',
-    price: 310000,
-    from: ['college', 'overseas', 'developmental', 'nba'],
-    joy: 14,
-    hypePerMonth: 0.3,
+    id: 'moms-house',
+    label: 'Buy your mother a house',
+    detail: 'The one you told her about when you were fourteen, in the school district she wanted.',
+    category: 'property',
+    price: 640_000,
+    from: ['overseas', 'developmental', 'nba'],
+    joy: 34,
+    hypePerMonth: 0.4,
+  },
+  {
+    id: 'family-home',
+    label: 'A house to raise a family in',
+    detail: 'Five bedrooms, a garden, and a driveway you will be shooting on with somebody in about six years.',
+    category: 'property',
+    price: 1_900_000,
+    from: ['overseas', 'developmental', 'nba'],
+    joy: 30,
+    energyPerMonth: 4,
+    injuryFactor: 0.95,
+    isProperty: true,
   },
   {
     id: 'estate',
     label: 'The house',
-    detail: 'Gated, absurd, and photographed from a helicopter once.',
-    category: 'life',
-    price: 6400000,
+    detail: 'Gated, absurd, and photographed from a helicopter exactly once, by somebody who was asked to leave.',
+    category: 'property',
+    price: 6_400_000,
     from: ['nba'],
-    joy: 18,
+    joy: 20,
     hypePerMonth: 0.6,
+    energyPerMonth: 5,
+    isProperty: true,
   },
   {
     id: 'charity',
     label: 'Start a foundation',
-    detail: 'Courts resurfaced in the neighbourhood you came from.',
-    category: 'life',
-    price: 1500000,
+    detail: 'Courts resurfaced in the neighbourhood you came from, with your mother’s name on the plaque instead of yours.',
+    category: 'property',
+    price: 1_500_000,
     from: ['overseas', 'developmental', 'nba'],
-    joy: 26,
+    joy: 30,
     hypePerMonth: 0.8,
   },
 ];
@@ -241,6 +291,11 @@ export interface AssetEffects {
   energyPerMonth: number;
   injuryFactor: number;
   hypePerMonth: number;
+}
+
+/** Whether the player has somewhere of their own to hold something at. */
+export function hasProperty(owned: OwnedAsset[]): boolean {
+  return owned.some((o) => assetById(o.id)?.isProperty);
 }
 
 export function assetEffects(owned: OwnedAsset[]): AssetEffects {

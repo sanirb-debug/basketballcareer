@@ -1,5 +1,10 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import { SCHEMA_VERSION, type GameState } from '../engine/types';
+import {
+  SCHEMA_VERSION,
+  type GameState,
+  type PersonRole,
+  type RomanceStage,
+} from '../engine/types';
 import { createRng, seedToState } from '../engine/rng';
 import { initialPeople } from '../engine/people';
 import { initialNightlife } from '../engine/nightlife';
@@ -102,6 +107,27 @@ const STEPS: Record<number, Step> = {
       ...person,
       interactionsThisMonth: 0,
     })),
+  }),
+
+  /**
+   * v7 → v8: dating, marriage and children.
+   *
+   * The one non-additive part is the `fling` role, which is now the role
+   * `partner` carrying a `romance` stage — the role answers who somebody is
+   * and the stage answers how serious it is, and conflating them stopped
+   * working the moment engagements existed.
+   */
+  7: (state) => ({
+    ...state,
+    schemaVersion: 8,
+    dating: { candidates: [], refreshedMonth: -1 },
+    people: state.people.map((person) => {
+      // `fling` is not in the current union at all, so the comparison has to
+      // go through a widened view of the stored value.
+      if ((person.role as string) !== 'fling') return person;
+      const romance: RomanceStage = person.exclusive ? 'exclusive' : 'dating';
+      return { ...person, role: 'partner' as PersonRole, romance };
+    }),
   }),
 };
 

@@ -108,8 +108,8 @@ describe('the people are people (SPEC §6)', () => {
       expect(interactionsFor(role).length).toBeGreaterThan(0);
     }
     // And nothing is offered to a role it makes no sense for.
-    expect(interactionsFor('mother').some((i) => i.id === 'dateNight')).toBe(false);
-    expect(interactionsFor('partner').some((i) => i.id === 'dateNight')).toBe(true);
+    expect(interactionsFor('mother').some((i) => i.id === 'stayIn')).toBe(false);
+    expect(interactionsFor('partner').some((i) => i.id === 'stayIn')).toBe(true);
   });
 
   test('there is no monthly ration — you can go to someone as often as you like', () => {

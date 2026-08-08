@@ -25,7 +25,7 @@ interface Props {
 
 const GROUPS: { title: string; roles: PersonRole[] }[] = [
   { title: 'Family', roles: ['father', 'mother', 'sibling', 'child'] },
-  { title: 'Seeing', roles: ['partner', 'fling'] },
+  { title: 'Seeing', roles: ['partner'] },
   { title: 'Basketball', roles: ['coach', 'trainer', 'agent', 'teammate'] },
   { title: 'Friends', roles: ['friend'] },
   { title: 'Rivals', roles: ['rival'] },
@@ -185,7 +185,7 @@ function InteractionModal({
                     onPick(def.id);
                     // Ending it or naming it closes the sheet; everything
                     // else leaves it open so you can keep going.
-                    if (def.id === 'breakUp' || def.id === 'commit') onDone();
+                    if (def.id === 'breakUp') onDone();
                   }}
                   className="flex w-full items-center justify-between gap-4 rounded-lg border border-neutral-800 px-4 py-3 text-left transition hover:border-neutral-600 disabled:cursor-not-allowed disabled:border-neutral-900 disabled:text-neutral-700"
                 >

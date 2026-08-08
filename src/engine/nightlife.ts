@@ -282,11 +282,17 @@ export function resolveNight(
   const met = rng.chance(meetChance);
 
   if (met) {
-    const person = makePerson(rng, 'fling', context.playerSurname, {
+    const person = makePerson(rng, 'partner', context.playerSurname, {
       age: Math.max(18, Math.round(context.ageYears + rng.float(-3, 5))),
       relationship: rng.int(28, 52),
     });
-    result.metPerson = { ...person, metMonth: monthsElapsed, exclusive: false };
+    result.metPerson = {
+      ...person,
+      metMonth: monthsElapsed,
+      exclusive: false,
+      romance: 'flirting',
+      metVia: 'out somewhere',
+    };
 
     if (partner) {
       // You had somewhere to be and you did not go there.
@@ -433,3 +439,148 @@ export function settleNightlife(
     nightsThisMonth: 0,
   };
 }
+
+// --- Parties --------------------------------------------------------------
+
+/**
+ * Throwing one, rather than going to one.
+ *
+ * The difference matters: a party you host is a statement about who you are
+ * now, and it buys you standing with people whose opinion of you is otherwise
+ * out of your hands. It also puts your address on the internet.
+ */
+export interface PartyDef {
+  id: PartyId;
+  label: string;
+  detail: string;
+  cost: number;
+  energy: number;
+  /** Standing with teammates and friends. */
+  social: number;
+  hype: number;
+  distraction: number;
+  exposure: number;
+  /** Chance somebody worth knowing is there. */
+  meetChance: number;
+  /** Needs a place to hold it. */
+  requiresProperty?: boolean;
+}
+
+export type PartyId = 'apartment' | 'housewarming' | 'birthday' | 'blowout';
+
+export const PARTIES: PartyDef[] = [
+  {
+    id: 'apartment',
+    label: 'Something at yours',
+    detail:
+      'Forty people, a speaker on a chair, and a neighbour who is going to say something on Monday. Costs nothing and everybody remembers it.',
+    cost: 600,
+    energy: 12,
+    social: 12,
+    hype: 0.6,
+    distraction: 9,
+    exposure: 0.6,
+    meetChance: 0.4,
+  },
+  {
+    id: 'housewarming',
+    label: 'Housewarming',
+    detail:
+      'You bought the place. Now everyone gets to walk through it and say the same thing about the kitchen.',
+    cost: 14_000,
+    energy: 14,
+    social: 18,
+    hype: 1.4,
+    distraction: 11,
+    exposure: 1.3,
+    meetChance: 0.5,
+    requiresProperty: true,
+  },
+  {
+    id: 'birthday',
+    label: 'Your birthday, properly',
+    detail:
+      'A venue, a guest list, and three people you have never met making a toast about you.',
+    cost: 60_000,
+    energy: 20,
+    social: 20,
+    hype: 2.6,
+    distraction: 18,
+    exposure: 2.4,
+    meetChance: 0.62,
+  },
+  {
+    id: 'blowout',
+    label: 'The one people talk about',
+    detail:
+      'You stopped asking what things cost around ten o’clock. There is footage. There is always footage.',
+    cost: 220_000,
+    energy: 30,
+    social: 22,
+    hype: 4.5,
+    distraction: 30,
+    exposure: 4,
+    meetChance: 0.75,
+  },
+];
+
+export function partyById(id: PartyId): PartyDef | undefined {
+  return PARTIES.find((p) => p.id === id);
+}
+
+export interface PartyResult {
+  moneyDelta: number;
+  energyDelta: number;
+  distractionDelta: number;
+  socialDelta: number;
+  hypeDelta: number;
+  offCourtDelta: number;
+  coachTrustDelta: number;
+  tabloid: boolean;
+  /** Somebody worth knowing turned up. */
+  metSomeone: boolean;
+  outcome: string[];
+}
+
+export function resolveParty(
+  def: PartyDef,
+  context: { fame: number; nightsThisMonth: number },
+  rng: Rng,
+): PartyResult {
+  const falloff = nightFalloff(context.nightsThisMonth);
+  const result: PartyResult = {
+    moneyDelta: -def.cost,
+    energyDelta: -def.energy,
+    distractionDelta: def.distraction,
+    socialDelta: def.social * falloff,
+    hypeDelta: def.hype,
+    offCourtDelta: 0,
+    coachTrustDelta: 0,
+    tabloid: false,
+    metSomeone: rng.chance(clamp(def.meetChance * (0.7 + context.fame / 140), 0, 0.95)),
+    outcome: [],
+  };
+
+  result.outcome.push(PARTY_LINES[Math.floor(rng.next() * PARTY_LINES.length)]);
+
+  const tabloidChance = clamp((context.fame / 100) * def.exposure * 0.3, 0, 0.8);
+  if (rng.chance(tabloidChance)) {
+    result.tabloid = true;
+    result.hypeDelta += def.exposure * 0.8;
+    result.offCourtDelta -= 5 + def.exposure * 1.6;
+    result.coachTrustDelta -= 1.5 + def.exposure * 0.8;
+    result.outcome.push(
+      'Somebody posted the whole thing. Your name is in a headline with the word “bash” in it.',
+    );
+  }
+
+  return result;
+}
+
+const PARTY_LINES = [
+  'It went well. People stayed later than they meant to, which is the only real review.',
+  'Two of your teammates argued about a rule for an hour. Everyone else had a great time.',
+  'Somebody you do not know made a speech about you. It was mostly accurate.',
+  'You spent most of it in the kitchen talking to one person, which is how these usually go.',
+  'It got away from you around midnight in the way these things do.',
+];
