@@ -1,7 +1,7 @@
 import type { RngState } from './rng';
 
 /** Bump when the shape of `GameState` changes in a way old saves can't satisfy. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export type Position = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 export const POSITIONS: readonly Position[] = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -139,6 +139,11 @@ export type SchoolTier = 'powerhouse' | 'public' | 'prep';
 export interface School {
   tier: SchoolTier;
   name: string;
+  /**
+   * Where you actually are in 8th grade. You do not attend a high school in
+   * middle school — the chosen high school is where you are *headed*.
+   */
+  middleSchoolName: string;
   blurb: string;
   /** How good your teammates are, 25–99. Drives team scoring. */
   teamStrength: number;

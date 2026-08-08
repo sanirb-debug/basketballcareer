@@ -15,6 +15,7 @@ import LifePanel from './LifePanel';
 import CareerArchive from './CareerArchive';
 import CareerPanel from './CareerPanel';
 import BigChoicesPanel from './BigChoicesPanel';
+import AttributesPanel from './AttributesPanel';
 
 /**
  * The month screen (SPEC §17), which deliberately changes shape by season
@@ -27,7 +28,14 @@ import BigChoicesPanel from './BigChoicesPanel';
  * action points; in the offseason the training menu leads with four.
  */
 
-type Tab = 'month' | 'career' | 'recruiting' | 'rankings' | 'life' | 'archive';
+type Tab =
+  | 'month'
+  | 'ratings'
+  | 'career'
+  | 'recruiting'
+  | 'rankings'
+  | 'life'
+  | 'archive';
 
 interface Props {
   view: PublicView;
@@ -164,6 +172,7 @@ export default function MonthScreen({
   // the moment high school is over, and a career panel takes their place.
   const tabs: { id: Tab; label: string; badge?: string }[] = [
     { id: 'month', label: 'Month' },
+    { id: 'ratings', label: 'Ratings', badge: String(view.player.overall) },
     ...(inHighSchool
       ? ([
           {
@@ -409,6 +418,7 @@ export default function MonthScreen({
           </div>
         )}
 
+        {tab === 'ratings' && <AttributesPanel view={view} />}
         {tab === 'career' && (
           <CareerPanel
             view={view}

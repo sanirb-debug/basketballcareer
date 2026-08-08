@@ -44,8 +44,32 @@ const INPUT: CreationInput = {
 
 describe('the catalog (SPEC §12)', () => {
   test('hits the 80–120 target for the high school slice', () => {
-    expect(EVENTS.length).toBeGreaterThanOrEqual(80);
-    expect(EVENTS.length).toBeLessThanOrEqual(120);
+    // SPEC §12's target is for the high school slice specifically. The
+    // catalog now spans a whole career, so measure the subset that can
+    // actually fire before graduation.
+    const highSchool = EVENTS.filter((e) => {
+      const c = e.conditions;
+      if (!c) return true;
+      if ((c.minGrade ?? 0) > 12) return false;
+      if (c.requireFlags?.includes('in_the_league')) return false;
+      return true;
+    });
+
+    expect(highSchool.length).toBeGreaterThanOrEqual(80);
+    expect(highSchool.length).toBeLessThanOrEqual(120);
+    // And the whole career has more than the slice alone.
+    expect(EVENTS.length).toBeGreaterThan(highSchool.length);
+  });
+
+  test('the later stages have their own storylines', () => {
+    const collegeOrLater = EVENTS.filter(
+      (e) => (e.conditions?.minGrade ?? 0) > 12,
+    );
+    const pro = EVENTS.filter((e) =>
+      e.conditions?.requireFlags?.includes('in_the_league'),
+    );
+    expect(collegeOrLater.length).toBeGreaterThanOrEqual(5);
+    expect(pro.length).toBeGreaterThanOrEqual(5);
   });
 
   test('covers every category the spec names', () => {
@@ -116,7 +140,7 @@ describe('the catalog (SPEC §12)', () => {
     }
 
     // Flags the engine raises rather than a choice.
-    const engineFlags = new Set(['returned_from_injury']);
+    const engineFlags = new Set(['returned_from_injury', 'in_the_league']);
 
     expect(required.size).toBeGreaterThan(5);
     // Every flag an event waits on must be reachable — otherwise the event is

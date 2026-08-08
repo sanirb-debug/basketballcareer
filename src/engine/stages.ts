@@ -206,6 +206,8 @@ export function advanceDraft(
       stage: 'nba',
       college: null,
       pro: initialPro(team.id, contract, league),
+      // Unlocks the professional storylines (SPEC §12 chaining).
+      events: { ...next.events, flags: { ...next.events.flags, in_the_league: true } },
     };
   }
 

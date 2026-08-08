@@ -1,4 +1,5 @@
 import type { GameEvent } from './types';
+import { EVENTS_2 } from './catalog2';
 
 /**
  * The event catalog (SPEC §12) — target 80–120 for the high school slice.
@@ -8,7 +9,7 @@ import type { GameEvent } from './types';
  * flag, and a later event requires or forbids it.
  */
 
-export const EVENTS: readonly GameEvent[] = [
+const EVENTS_1: readonly GameEvent[] = [
   // ======================================================================
   // FAMILY
   // ======================================================================
@@ -2908,3 +2909,6 @@ export const EVENTS: readonly GameEvent[] = [
     ],
   },
 ];
+
+/** The whole catalog, split across two files only for readability. */
+export const EVENTS: readonly GameEvent[] = [...EVENTS_1, ...EVENTS_2];

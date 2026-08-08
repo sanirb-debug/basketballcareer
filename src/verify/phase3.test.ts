@@ -238,7 +238,9 @@ describe('injuries (SPEC §6)', () => {
     let withRest = 0;
     let withoutRest = 0;
 
-    for (let seed = 1; seed <= 60; seed++) {
+    // A larger sample than the other assertions: this is a rate comparison
+    // between two whole careers, and 60 runs sat inside the noise band.
+    for (let seed = 1; seed <= 140; seed++) {
       withRest += injuryCount(runCareer(seed, rotatePolicy));
       withoutRest += injuryCount(
         runCareer(seed, (s) => {

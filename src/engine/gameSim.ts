@@ -115,7 +115,10 @@ function makes(rng: Rng, attempts: number, pct: number): number {
   if (attempts <= 0) return 0;
   const p = clamp(pct, 0.02, 0.98);
   const sd = Math.sqrt(attempts * p * (1 - p));
-  return clamp(Math.round(attempts * p + rng.normal(0, sd)), 0, attempts);
+  const made = clamp(Math.round(attempts * p + rng.normal(0, sd)), 0, attempts);
+  // Math.round can hand back -0, which then propagates into the points total
+  // and fails an exact reconciliation check. Normalise it.
+  return made === 0 ? 0 : made;
 }
 
 function noisy(rng: Rng, value: number, spread: number): number {

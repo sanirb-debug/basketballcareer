@@ -7,6 +7,7 @@ import {
   phaseFor,
 } from './calendar';
 import { overallFor } from './attributes';
+import { skillCeiling } from './actions';
 import { effectiveAttributes } from './condition';
 import { GAME_MINUTES, LEVELS, addBox, emptyBox, levelFor, minutesFor } from './gameSim';
 import { gradeForClock, gradeLabel, perGame } from './season';
@@ -31,7 +32,7 @@ import {
   suggestedPosition,
   transferOptions,
 } from './decisions';
-import { SCHOOLS, SCHOOL_TIERS } from './school';
+import { SCHOOLS, SCHOOL_TIERS, isMiddleSchool } from './school';
 import type {
   CareerStage,
   PathOption,
@@ -222,6 +223,9 @@ export interface PublicView {
   };
   school: {
     name: string;
+    /** The high school you are headed to, which differs in 8th grade. */
+    highSchoolName: string;
+    inMiddleSchool: boolean;
     blurb: string;
     exposure: number;
   };
@@ -233,6 +237,12 @@ export interface PublicView {
   recentLog: { text: string; date: string; kind: string }[];
   grade: number;
   gradeLabel: string;
+  /**
+   * How far a trainable attribute can currently be pushed, from hidden
+   * potential. Shown as a marker so growth is visible without exposing the
+   * potential number itself.
+   */
+  trainingCeiling: number;
   academics: Academics & { standing: string };
   reputation: Reputation;
   money: number;
@@ -297,7 +307,13 @@ export function toPublicView(state: GameState): PublicView {
       overall,
     },
     school: {
-      name: state.school.name,
+      // Where you actually are this month, which is middle school in 8th grade.
+      name:
+        state.stage === 'highschool' && isMiddleSchool(grade)
+          ? state.school.middleSchoolName
+          : state.school.name,
+      highSchoolName: state.school.name,
+      inMiddleSchool: state.stage === 'highschool' && isMiddleSchool(grade),
       blurb: state.school.blurb,
       exposure: state.school.exposureMultiplier,
     },
@@ -320,6 +336,7 @@ export function toPublicView(state: GameState): PublicView {
       })),
     grade,
     gradeLabel: gradeLabel(grade),
+    trainingCeiling: Math.round(skillCeiling(state.player.hiddenMeta.potential)),
     academics: {
       ...state.academics,
       standing: describeEligibility(state.academics.status),

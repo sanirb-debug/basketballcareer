@@ -28,6 +28,7 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
   const [homeCity, setHomeCity] = useState('');
   const [homeState, setHomeState] = useState('Indiana');
   const [schoolTier, setSchoolTier] = useState<SchoolTier>('public');
+  const [schoolName, setSchoolName] = useState('');
   const [seedText, setSeedText] = useState('');
 
   const canSubmit = name.trim().length > 0 && homeCity.trim().length > 0;
@@ -44,6 +45,7 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
         homeCity: homeCity.trim(),
         homeState,
         schoolTier,
+        ...(schoolName.trim() ? { schoolName: schoolName.trim() } : {}),
       },
       seedText.trim(),
     );
@@ -196,6 +198,23 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
             </button>
           );
         })}
+      </div>
+
+      <div className="mt-6">
+        <label className={labelClass} htmlFor="schoolName">
+          Name your high school <span className="normal-case">(optional)</span>
+        </label>
+        <input
+          id="schoolName"
+          className={fieldClass}
+          value={schoolName}
+          onChange={(e) => setSchoolName(e.target.value)}
+          placeholder={SCHOOLS[schoolTier].name}
+        />
+        <p className="mt-2 text-sm text-neutral-500">
+          Leave blank to use {SCHOOLS[schoolTier].name}. You will spend 8th
+          grade at your local middle school either way.
+        </p>
       </div>
 
       <div className="mt-10">

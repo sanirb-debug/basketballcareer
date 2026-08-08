@@ -275,7 +275,10 @@ describe('college (SPEC §14)', () => {
     const moved = transferTo(portal, options[0]!.id);
     expect(moved.college?.programId).toBe(options[0]!.id);
     expect(moved.college?.transfers).toBe(1);
-    expect(moved.college?.trust).toBeLessThan(portal.college!.trust + 1);
+    // Trust resets to a newcomer's standing with a staff that did not
+    // recruit you — which is a fall from a starter's number and a rise from
+    // the doghouse. Either way it is no longer what you earned before.
+    expect(moved.college?.trust).toBe(32);
     expect(moved.season).toBeNull();
   });
 

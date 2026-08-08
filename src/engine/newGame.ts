@@ -34,6 +34,8 @@ export interface CreationInput {
   homeCity: string;
   homeState: string;
   schoolTier: SchoolTier;
+  /** Optional: name your own high school. Falls back to the tier's default. */
+  schoolName?: string;
 }
 
 /**
@@ -99,7 +101,10 @@ export function createGame(
     confidence: 50,
   };
 
-  const school = schoolFor(input.schoolTier);
+  const school = schoolFor(input.schoolTier, {
+    ...(input.schoolName ? { name: input.schoolName } : {}),
+    city: input.homeCity,
+  });
   const academics = initialAcademics(rng);
   const recruiting = initialRecruiting(rng);
   const relationships = initialRelationships(origin.familyStructure);
@@ -176,7 +181,7 @@ export function createGame(
         year: clock.year,
         month: clock.month,
         kind: 'system',
-        text: `${input.name} starts out in ${input.homeCity}, ${input.homeState}, headed to ${school.name}.`,
+        text: `${input.name} starts out in ${input.homeCity}, ${input.homeState}. ${school.middleSchoolName} now, ${school.name} next year.`,
       },
     ],
   };

@@ -4,6 +4,7 @@ import { growOneMonth } from './growth';
 import { applyDerivedAttributes, overallFor } from './attributes';
 import { ACTIONS, TRAINING, applyActions, normalizeActions } from './actions';
 import { advanceRehab, effectiveAttributes, rollInjury } from './condition';
+import { MIDDLE_SCHOOL_TEAM, isMiddleSchool } from './school';
 import { GAME_MINUTES, LEVELS, levelFor, minutesFor, resolveGame } from './gameSim';
 import {
   advanceLeague,
@@ -632,7 +633,13 @@ interface PlayResult {
 
 function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
   const config = seasonConfigFor(state.stage);
-  const team = teamContextFor(state, teamContextFromSchool(state.school));
+  // In 8th grade you are still at middle school; the chosen high school is
+  // where you are headed, not where you play.
+  const middleSchool =
+    state.stage === 'highschool' && isMiddleSchool(gradeForClock(ctx.clock));
+  const team = middleSchool
+    ? { name: state.school.middleSchoolName, ...MIDDLE_SCHOOL_TEAM }
+    : teamContextFor(state, teamContextFromSchool(state.school));
   const seasonYear = seasonYearFor(ctx.clock, config);
   let season = state.season;
 
