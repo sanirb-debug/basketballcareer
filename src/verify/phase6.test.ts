@@ -304,7 +304,7 @@ describe('reading the board', () => {
 describe('recruiting inside a real run', () => {
   test('a strong career produces offers by senior year', () => {
     const state = autoTickMonths(createGame(3, INPUT), 52, (s) => {
-      const budget = phaseFor(s.clock).actionPoints;
+      const budget = phaseFor(s.clock, s.stage).actionPoints;
       return ['shooting', 'defense', 'study', 'lift'].slice(
         0,
         budget,

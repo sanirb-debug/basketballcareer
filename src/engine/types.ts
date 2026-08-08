@@ -1,7 +1,7 @@
 import type { RngState } from './rng';
 
 /** Bump when the shape of `GameState` changes in a way old saves can't satisfy. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export type Position = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 export const POSITIONS: readonly Position[] = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -402,6 +402,14 @@ export interface Program {
   /** Academic standard — bluebloods still need you eligible. */
   requiresQualifier: boolean;
   state: string;
+  /** Conference the program plays in. JUCO programs sit outside one. */
+  conference: string;
+  /** Roster strength 25–99 — how good the team around you is. */
+  strength: number;
+  /** The bar for minutes here, same idea as a high school's roster depth. */
+  rosterDepth: number;
+  /** Coaching quality: modifies development and trust growth. */
+  coachQuality: number;
 }
 
 export interface Offer {
@@ -453,15 +461,143 @@ export interface EventState {
 // --- Endings (SPEC §15) ---------------------------------------------------
 
 export type EndingId =
+  // High school terminal states
   | 'career-ending-injury'
   | 'academic-washout'
-  | 'no-offers'
-  | 'juco-grinder'
-  | 'low-major-signee'
-  | 'mid-major-signee'
-  | 'high-major-signee'
-  | 'blueblood-signee'
-  | 'off-court-flameout';
+  | 'off-court-flameout'
+  // Post-high-school paths that end without a pro career (SPEC §15)
+  | 'rec-league'
+  | 'college-washout'
+  | 'juco-dead-end'
+  | 'overseas-journeyman'
+  | 'undrafted-grinder'
+  // Pro careers
+  | 'two-way-shuttle'
+  | 'role-player'
+  | 'role-player-with-ring'
+  | 'starter'
+  | 'all-star'
+  | 'superstar'
+  | 'hall-of-fame';
+
+
+// --- Career stages (SPEC §14) ---------------------------------------------
+
+/**
+ * Where a career currently is. The high school slice is one stage among
+ * several rather than the whole game.
+ */
+export type CareerStage =
+  | 'highschool'
+  | 'juco'
+  | 'college'
+  | 'developmental'
+  | 'overseas'
+  | 'nba'
+  | 'retired';
+
+/** The routes available at 18 (SPEC §14). */
+export type PostHighSchoolPath =
+  | 'college'
+  | 'juco'
+  | 'ote'
+  | 'gleague'
+  | 'overseas';
+
+export interface PathOption {
+  path: PostHighSchoolPath;
+  /** Program id when the route is college or JUCO. */
+  programId: string | null;
+  label: string;
+  detail: string;
+  /** Money per month on this route. */
+  stipend: number;
+  available: boolean;
+  blockedReason: string | null;
+}
+
+// --- College (SPEC §14) ---------------------------------------------------
+
+export interface CollegeState {
+  programId: string;
+  /** Academic year on campus, 1–5. */
+  year: number;
+  /** Years of eligibility left. */
+  eligibilityLeft: number;
+  redshirted: boolean;
+  /** True during a redshirt season — practices, does not play. */
+  redshirtingNow: boolean;
+  /** NIL money earned per month. */
+  nilPerMonth: number;
+  transfers: number;
+  /** Coach trust at this program, separate from the high school number. */
+  trust: number;
+  /** Set when the player has entered the portal and is looking. */
+  inPortal: boolean;
+}
+
+// --- Draft (SPEC §14) -----------------------------------------------------
+
+export interface DraftState {
+  /** Year of the draft the player is eligible for. */
+  year: number;
+  declared: boolean;
+  /** Declared but retaining the option to withdraw. */
+  testingWaters: boolean;
+  withdrew: boolean;
+  /** 1–60, or 0 if undrafted. Set on draft night. */
+  pick: number;
+  round: number;
+  teamId: string | null;
+  /** Where scouts currently project him, 1–60+, updated monthly. */
+  projection: number;
+  completed: boolean;
+}
+
+// --- Pro career (SPEC §14) ------------------------------------------------
+
+export type ContractType = 'rookie-scale' | 'two-way' | 'minimum' | 'standard' | 'max';
+
+export interface Contract {
+  type: ContractType;
+  /** Salary in millions per year. */
+  salary: number;
+  yearsLeft: number;
+  teamOption: boolean;
+}
+
+export type ProRole = 'deep-bench' | 'rotation' | 'sixth-man' | 'starter' | 'star' | 'franchise';
+
+export interface ProTeam {
+  id: string;
+  name: string;
+  conference: 'East' | 'West';
+  /** Team quality 25–99. */
+  strength: number;
+  wins: number;
+  losses: number;
+}
+
+export interface Award {
+  season: number;
+  name: string;
+}
+
+export interface ProState {
+  teamId: string;
+  contract: Contract;
+  role: ProRole;
+  /** Seasons of pro experience completed. */
+  seasons: number;
+  championships: number;
+  allStars: number;
+  awards: Award[];
+  league: ProTeam[];
+  /** Set when the player has asked out. */
+  tradeRequested: boolean;
+  /** Playoff round reached last season, 0 = missed. */
+  lastPlayoffRound: number;
+}
 
 // --- Player and state -----------------------------------------------------
 
@@ -557,6 +693,18 @@ export interface GameState {
   events: EventState;
   /** Dollars. Income from family and jobs; spent on camps and trainers. */
   money: number;
+  /** Which stage of the career this is (SPEC §14). */
+  stage: CareerStage;
+  /**
+   * Set when high school is over and the player has to choose a route.
+   * Blocks the clock the same way a pending event does — the fork at
+   * eighteen is the single biggest decision in the game and cannot be
+   * defaulted through.
+   */
+  awaitingPath: boolean;
+  college: CollegeState | null;
+  draft: DraftState | null;
+  pro: ProState | null;
   careerEnd: CareerEnd | null;
   /** Everything the player is not allowed to see. Stripped by `toPublicView`. */
   hidden: {

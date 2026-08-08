@@ -13,9 +13,24 @@ import {
   gradeLabel,
   hasGraduated,
   isSchoolYearEnd,
-  seasonYearForClock,
+  seasonConfigFor,
+  seasonYearFor,
   summarizeSeason,
+  teamContextFromSchool,
 } from './season';
+import type { Note } from './stages';
+import {
+  advanceCollege,
+  advanceDraft,
+  advancePro,
+  applyProAging,
+  ageYearsOf,
+  collegeExhausted,
+  teamContextFor,
+  trustFor,
+} from './stages';
+import { hasAnyPath } from './careerPath';
+import { initialDraft } from './draft';
 import { advanceAcademics, isSchoolMonth } from './academics';
 import { advanceClass, playerRank } from './prospects';
 import { advanceHype, offeredAauTier } from './hype';
@@ -23,7 +38,7 @@ import { exposureForState } from './origin';
 import { advanceRecruiting } from './recruiting';
 import { advanceRelationships, coachTrustBonus } from './relationships';
 import { selectEvent } from './events/engine';
-import { isSliceOver, resolveEnding } from './endings';
+import { resolveEnding } from './endings';
 import type {
   Attributes,
   GameRecord,
@@ -85,6 +100,7 @@ export const COACH_TRUST = {
 
 export class ActionBudgetError extends Error {}
 export class UnresolvedEventError extends Error {}
+export class PathChoiceRequiredError extends Error {}
 
 export function tick(state: GameState, actions: MonthAction[]): GameState {
   // A finished run is inert (SPEC §15).
@@ -97,9 +113,18 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     );
   }
 
+  // High school is over and the route has not been chosen (SPEC §14).
+  if (state.awaitingPath) {
+    throw new PathChoiceRequiredError(
+      'Choose what happens after high school before ticking',
+    );
+  }
+
   const rng = createRng(state.rngState);
   const clock = state.clock;
-  const phase = phaseFor(clock);
+  const stage = state.stage;
+  const inHighSchool = stage === 'highschool';
+  const phase = phaseFor(clock, stage);
   const grade = gradeForClock(clock);
 
   const chosen = normalizeActions(actions);
@@ -152,9 +177,12 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
       academics: state.academics,
       studyActions: count('study'),
       testPrepActions: count('testPrep'),
-      inSchoolYear: isSchoolMonth(clock.month) && grade <= 12,
+      // College keeps a GPA too, but eligibility only gates the jump out of
+      // high school, so it stops mattering once that jump is made.
+      inSchoolYear:
+        isSchoolMonth(clock.month) && grade <= 12 && inHighSchool,
       basketballIQ: applied.attributes.basketballIQ as number,
-      yearComplete: isSchoolYearEnd(clock) && grade <= 12,
+      yearComplete: isSchoolYearEnd(clock) && grade <= 12 && inHighSchool,
     },
     rng,
   );
@@ -164,7 +192,9 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   const played = playMonth(rng, state, {
     clock,
     attributes: applied.attributes,
-    coachTrust,
+    // College and pro staffs keep their own trust — you do not walk onto
+    // campus with the standing you had as a high school senior.
+    coachTrust: inHighSchool ? coachTrust : trustFor(state),
     energy,
     note,
   });
@@ -192,7 +222,8 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   for (const text of hypeResult.notes) note('hype', text);
 
   // --- 5. The class moves whether you did anything or not (SPEC §11) -----
-  const prospects = advanceClass(state.prospects, rng);
+  // The recruiting class only matters while you are being recruited.
+  const prospects = inHighSchool ? advanceClass(state.prospects, rng) : state.prospects;
   const playerEntry = {
     name: state.player.name,
     position: state.player.position,
@@ -222,7 +253,8 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     .filter((a) => a.id === 'visit' && a.target)
     .map((a) => a.target as string);
 
-  const recruitingResult = advanceRecruiting(
+  const recruitingResult = inHighSchool
+    ? advanceRecruiting(
     state.recruiting,
     {
       nationalRank,
@@ -237,7 +269,8 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
       homeState: state.origin.homeState,
     },
     rng,
-  );
+      )
+    : { recruiting: state.recruiting, notes: [] as string[] };
   for (const text of recruitingResult.notes) note('recruiting', text);
 
   // --- 7. Relationships (SPEC §6) ---------------------------------------
@@ -321,13 +354,21 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
 
   // --- 11. Season rollover ----------------------------------------------
   let history = state.history;
-  if (season && clock.month === 2 && season.schedule.every((g) => g.played)) {
-    const summary = summarizeSeason(season, state.school.name);
+  const postseasonMonth = seasonConfigFor(stage).postseasonMonth;
+  if (
+    season &&
+    clock.month === postseasonMonth &&
+    season.schedule.every((g) => g.played)
+  ) {
+    const teamName = teamContextFor(state, teamContextFromSchool(state.school)).name;
+    const summary = summarizeSeason(season, teamName);
     const ppg =
       summary.games > 0 ? (summary.totals.points / summary.games).toFixed(1) : '0.0';
     note(
       'system',
-      `${gradeLabel(season.grade)} year done: ${season.wins}-${season.losses}, ${ppg} ppg.`,
+      inHighSchool
+        ? `${gradeLabel(season.grade)} year done: ${season.wins}-${season.losses}, ${ppg} ppg.`
+        : `Season done: ${season.wins}-${season.losses}, ${ppg} ppg.`,
     );
     history = [...history, summary];
     season = null;
@@ -352,6 +393,8 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   }
 
   // --- 14. Growth --------------------------------------------------------
+  // The schedule closes at 19 on its own, so this is a no-op afterwards and
+  // still consumes its draw, keeping the stream aligned at every age.
   const growth = growOneMonth(state.player.body, ageNext, state.hidden.genetics, rng);
   const grew = Math.round(growth.grewInches * 10) / 10;
   if (grew >= GROWTH_NOTIFICATION_THRESHOLD) {
@@ -411,24 +454,82 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     }
   }
 
-  // --- 17. Has the slice ended? (SPEC §15, §18) -------------------------
-  if (!next.careerEnd && isSliceOver(next)) {
-    const ending = resolveEnding(next);
-    next = {
-      ...next,
-      careerEnd: ending,
-      events: { ...next.events, pending: null },
-      log: [
-        ...next.log,
-        {
-          monthsElapsed,
-          year: nextClock.year,
-          month: nextClock.month,
-          kind: 'system',
-          text: `${ending.reason}. ${ending.detail}`,
-        },
-      ],
-    };
+  // --- 17. Stage progression (SPEC §14) ---------------------------------
+  if (!next.careerEnd) {
+    next = advanceStage(next, note, rng);
+    // Sub-steps above append to `log`, which is folded in at the end.
+    next = { ...next, log: [...state.log, ...log] };
+  }
+
+  return next;
+}
+
+/**
+ * Move the career between stages.
+ *
+ * High school no longer *ends* the run — it hands off to a choice of routes
+ * (SPEC §14). Every later stage has its own exit: eligibility running out,
+ * the draft, a contract nobody renews.
+ */
+function advanceStage(state: GameState, note: Note, rng: Rng): GameState {
+  let next = state;
+  const ageYears = ageYearsOf(next);
+
+  switch (next.stage) {
+    case 'highschool': {
+      // The senior year is over: choose a road, or discover there isn't one.
+      const grade = gradeForClock(next.clock);
+      const done = grade > 12 || (grade === 12 && next.clock.month === 5);
+      if (!done) break;
+
+      if (!hasAnyPath(next)) {
+        note('system', 'No road out of high school opened.');
+        return { ...next, careerEnd: resolveEnding(next) };
+      }
+
+      note('system', 'High school is over. Time to choose what happens next.');
+      return {
+        ...next,
+        awaitingPath: true,
+        draft: next.draft ?? initialDraft(next.clock.year + 1),
+      };
+    }
+
+    case 'college':
+    case 'juco': {
+      next = advanceCollege(next, note);
+      next = advanceDraft(next, note, rng);
+      if (next.stage !== 'college' && next.stage !== 'juco') break;
+
+      if (collegeExhausted(next)) {
+        // Out of eligibility. If he never declared, the road stops here.
+        note('system', 'Your eligibility is used up.');
+        return { ...next, careerEnd: resolveEnding(next) };
+      }
+      break;
+    }
+
+    case 'developmental':
+    case 'overseas': {
+      next = advanceDraft(next, note, rng);
+      if (next.stage === 'nba') break;
+
+      // The overseas road can simply run out with age.
+      if (ageYears >= 34 && next.clock.month === 6) {
+        note('system', 'The contracts stopped coming.');
+        return { ...next, careerEnd: resolveEnding(next) };
+      }
+      break;
+    }
+
+    case 'nba': {
+      next = applyProAging(next);
+      next = advancePro(next, note, rng);
+      break;
+    }
+
+    default:
+      break;
   }
 
   return next;
@@ -471,19 +572,36 @@ interface PlayResult {
 }
 
 function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
-  const seasonYear = seasonYearForClock(ctx.clock);
+  const config = seasonConfigFor(state.stage);
+  const team = teamContextFor(state, teamContextFromSchool(state.school));
+  const seasonYear = seasonYearFor(ctx.clock, config);
   let season = state.season;
 
-  if (
-    seasonYear !== null &&
-    !hasGraduated(seasonYear) &&
-    (!season || season.seasonYear !== seasonYear)
-  ) {
-    season = createSeason(rng, seasonYear, state.school);
-    ctx.note(
-      'system',
-      `${gradeLabel(season.grade)} season opens at ${state.school.name}.`,
+  // A redshirt year is spent in practice, not in games (SPEC §14).
+  const redshirting = state.college?.redshirtingNow ?? false;
+
+  const canOpen =
+    state.stage === 'highschool'
+      ? seasonYear !== null && !hasGraduated(seasonYear)
+      : seasonYear !== null && state.stage !== 'retired';
+
+  if (canOpen && (!season || season.seasonYear !== seasonYear)) {
+    const label =
+      state.stage === 'highschool'
+        ? `${gradeLabel(gradeForClock(ctx.clock))} season`
+        : state.stage === 'nba'
+          ? 'Season'
+          : `Year ${state.college?.year ?? 1}`;
+    season = createSeason(
+      rng,
+      seasonYear as number,
+      team,
+      config,
+      state.stage === 'highschool'
+        ? gradeForClock(ctx.clock)
+        : (state.college?.year ?? state.pro?.seasons ?? 1),
     );
+    ctx.note('system', `${label} opens at ${team.name}.`);
   }
 
   const idle: PlayResult = {
@@ -504,7 +622,7 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
   const scheduled = gamesScheduledFor(season, monthAbs);
   if (scheduled.length === 0) return idle;
 
-  const injured = state.condition.injury !== null;
+  const injured = state.condition.injury !== null || redshirting;
   const effective = effectiveAttributes(ctx.attributes, state.condition.injury);
   const overall = overallFor(effective, state.player.position);
 
@@ -529,7 +647,7 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
     const minutes = minutesFor(
       ctx.coachTrust,
       overall,
-      state.school.rosterDepth,
+      team.rosterDepth,
       energy,
       injured,
     );
@@ -539,7 +657,7 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
       position: state.player.position,
       minutes,
       opponentStrength: game.opponentStrength,
-      teamStrength: state.school.teamStrength,
+      teamStrength: team.teamStrength,
       home: game.home,
       energy,
       confidence: state.player.hiddenMeta.confidence,
@@ -571,7 +689,14 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
       oppScore: outcome.oppScore,
       win: outcome.win,
       box: outcome.box,
-      note: minutes > 0 ? null : injured ? 'Did not play — injured' : 'Did not dress',
+      note:
+        minutes > 0
+          ? null
+          : redshirting
+            ? 'Redshirt — practised, did not play'
+            : injured
+              ? 'Did not play — injured'
+              : 'Did not dress',
     });
   }
 

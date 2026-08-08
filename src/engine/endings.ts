@@ -1,20 +1,20 @@
 import { TIER_LABEL, programById } from './colleges';
 import { activeOffers, bestOffer } from './recruiting';
 import { ACADEMICS } from './academics';
-import { gradeForClock } from './season';
 import type { CareerEnd, EndingId, GameState } from './types';
 
 /**
- * Terminal states (SPEC §15).
+ * Terminal states for the whole career (SPEC §15).
  *
- * Two rules from the spec drive everything here:
+ * Three rules from the spec drive everything here:
  *
  * 1. Every run ends with a *named* ending and a screen that "names the
  *    specific decision that broke it" — so every ending carries a `decision`
  *    line built from what actually happened in this run, not boilerplate.
- * 2. Most sims only reward becoming the best player alive. This one has to
- *    make a smaller outcome feel like a real result, so a mid-major signature
- *    and a JUCO road are written as achievements rather than consolation.
+ * 2. "Most sims only reward becoming the best player alive. This one must make
+ *    a 6th-man defensive stopper who lasts 14 years feel like a successful
+ *    run." A ring as a role player scores above being a star who never won.
+ * 3. JUCO and the undrafted road are survivable, not fail states.
  */
 
 export interface EndingCopy {
@@ -25,58 +25,93 @@ export interface EndingCopy {
 }
 
 const ENDING_COPY: Record<EndingId, EndingCopy> = {
-  'blueblood-signee': {
-    reason: 'Blueblood signee',
+  'hall-of-fame': {
+    reason: 'Hall of Fame',
     detail:
-      'You signed with a program that has banners in the rafters and a rotation full of people exactly like you. Everything you did from thirteen led here.',
+      'They put you on the wall. Every kid who picks up a ball in your hometown for the next fifty years hears your name before they hear anyone else’s.',
     score: 100,
   },
-  'high-major-signee': {
-    reason: 'High-major signee',
+  superstar: {
+    reason: 'Superstar',
     detail:
-      'You signed at the high-major level. A real scholarship, a real conference, and a genuine chance to play on television.',
-    score: 85,
+      'You were, for a stretch of years, one of the best players alive. Franchises were built around what you could do, and the league looked different because you were in it.',
+    score: 94,
   },
-  'mid-major-signee': {
-    reason: 'Mid-major signee',
+  'all-star': {
+    reason: 'All-Star',
     detail:
-      'You signed with a mid-major. This is what the overwhelming majority of good high school players never get, and it is a career worth having.',
-    score: 70,
+      'Multiple All-Star selections and a career people will argue about in a good way. You were, unambiguously, one of the best in the world at this.',
+    score: 84,
   },
-  'low-major-signee': {
-    reason: 'Low-major signee',
+  'role-player-with-ring': {
+    reason: 'Champion role player',
     detail:
-      'You signed a college scholarship. Small gym, small budget, and your name on a roster that gets to keep playing.',
-    score: 55,
+      'You were never the best player on the floor and you did not need to be. You defended, you made the right pass, you hit the shot when it came, and you have a ring that says it worked. This is what a successful career actually looks like.',
+    score: 80,
   },
-  'juco-grinder': {
-    reason: 'The JUCO road',
+  starter: {
+    reason: 'Long-time starter',
     detail:
-      'Junior college. Two years to fix what needs fixing and re-recruit yourself with a compressed window. It is not the end — plenty of people have taken this road and come out the other side.',
+      'A decade of starts. Not a household name outside your city, and completely indispensable inside it.',
+    score: 72,
+  },
+  'role-player': {
+    reason: 'Rotation player',
+    detail:
+      'You carved out a real career off the bench in the best league in the world. Thousands of people who were better than you at eighteen never got a single minute of this.',
+    score: 62,
+  },
+  'two-way-shuttle': {
+    reason: 'The two-way shuttle',
+    detail:
+      'Years of call-ups and send-downs, hotel rooms in two leagues, and a handful of nights you will never forget. You were on an NBA floor. Most people are not.',
+    score: 46,
+  },
+  'undrafted-grinder': {
+    reason: 'Undrafted grinder',
+    detail:
+      'Nobody called your name on draft night, and you kept playing anyway — summer leagues, camps, whatever door was open. The grind was the career.',
+    score: 42,
+  },
+  'overseas-journeyman': {
+    reason: 'Overseas journeyman',
+    detail:
+      'Six countries, four languages you half-learned, and a professional basketball career that paid your bills for a decade. The NBA never called. Plenty of very good players can say the same.',
     score: 40,
+  },
+  'college-washout': {
+    reason: 'Out of eligibility',
+    detail:
+      'Four years of college basketball and no professional door open at the end of it. You got an education and a lot of good memories out of it, which is more than most.',
+    score: 28,
+  },
+  'juco-dead-end': {
+    reason: 'The road ended at JUCO',
+    detail:
+      'Two years of junior college and nobody came back for you. It was a genuine chance, and it did not convert.',
+    score: 24,
   },
   'academic-washout': {
     reason: 'Academic washout',
     detail:
-      'The basketball was never the problem. You could not clear the classroom bar, the D1 offers evaporated, and nobody was left holding a scholarship for you.',
-    score: 20,
+      'The basketball was never the problem. You could not clear the classroom bar, the offers evaporated, and nobody was left holding a scholarship for you.',
+    score: 18,
   },
-  'no-offers': {
-    reason: 'No offers',
+  'career-ending-injury': {
+    reason: 'Career-ending injury',
+    detail: 'The run just stops. No build-up, no warning, no second act.',
+    score: 15,
+  },
+  'rec-league': {
+    reason: 'Rec league',
     detail:
       'Nobody offered. You can still hoop — rec leagues, open gyms, the occasional tournament where somebody says you should have played college ball.',
     score: 10,
   },
   'off-court-flameout': {
     reason: 'Off-court flameout',
-    detail:
-      'The talent was never in question. Everything around it was.',
-    score: 5,
-  },
-  'career-ending-injury': {
-    reason: 'Career-ending injury',
-    detail: 'The run just stops. No build-up, no warning, no second act.',
-    score: 15,
+    detail: 'The talent was never in question. Everything around it was.',
+    score: 6,
   },
 };
 
@@ -84,28 +119,45 @@ export function endingCopy(id: EndingId): EndingCopy {
   return ENDING_COPY[id];
 }
 
+export function endingScore(id: EndingId): number {
+  return ENDING_COPY[id].score;
+}
+
+/** The pro tiers, so callers can ask "did this career reach the league?" */
+export const PRO_ENDINGS: readonly EndingId[] = [
+  'two-way-shuttle',
+  'role-player',
+  'role-player-with-ring',
+  'starter',
+  'all-star',
+  'superstar',
+  'hall-of-fame',
+];
+
 /**
  * Name the specific decision that produced this outcome.
  *
  * This is the part SPEC §15 actually asks for. It reads the run rather than
  * picking a canned line — the GPA you finished with, the school you picked at
- * thirteen, the choice that set the flag.
+ * thirteen, the choice that set a flag, the year you declared.
  */
 function pivotalDecision(state: GameState, endingId: EndingId): string {
-  const { academics, hype, school, recruiting } = state;
+  const { academics, hype, school, college, draft, pro } = state;
 
   switch (endingId) {
     case 'academic-washout':
       return (
-        `You finished with a ${academics.gpa.toFixed(2)} GPA and ${academics.coreCredits} of ` +
-        `${ACADEMICS.CORE_CREDITS_REQUIRED} core credits. Every month you chose the gym over the ` +
-        `classroom was a month this was getting closer.`
+        `You finished high school with a ${academics.gpa.toFixed(2)} GPA and ` +
+        `${academics.coreCredits} of ${ACADEMICS.CORE_CREDITS_REQUIRED} core credits. ` +
+        `Every month you chose the gym over the classroom was a month this was ` +
+        `getting closer.`
       );
 
-    case 'no-offers':
+    case 'rec-league':
       return (
-        `You finished ranked #${hype.nationalRank} with ${Math.round(hype.hype)} hype. ` +
-        `Choosing ${school.name} at thirteen meant the basketball was real and the audience was not.`
+        `You finished high school ranked #${hype.nationalRank} with ` +
+        `${Math.round(hype.hype)} hype. Choosing ${school.name} at thirteen meant ` +
+        `the basketball was real and the audience was not.`
       );
 
     case 'off-court-flameout':
@@ -117,148 +169,145 @@ function pivotalDecision(state: GameState, endingId: EndingId): string {
     case 'career-ending-injury':
       return 'One landing. Nothing you chose, and nothing you could have chosen differently.';
 
-    case 'juco-grinder': {
+    case 'juco-dead-end': {
       if (academics.status === 'non-qualifier') {
         return (
-          `A ${academics.gpa.toFixed(2)} GPA closed every four-year door. JUCO was not a choice ` +
-          `you made — it was the one that was left.`
+          `A ${academics.gpa.toFixed(2)} GPA closed every four-year door out of high ` +
+          `school. JUCO was not a choice you made — it was the one that was left, and ` +
+          `nobody came back for you.`
         );
       }
-      return `You took the junior college route with ${activeOffers(recruiting).length} offer(s) on the table.`;
+      return 'You took the junior college road and it did not convert into anything else.';
     }
 
-    default: {
-      const flips =
-        recruiting.decommits > 0
-          ? ` It took ${recruiting.decommits} decommit${
-              recruiting.decommits === 1 ? '' : 's'
-            } to get there.`
-          : '';
-
-      // Actually signed: name the school and when the decision was made.
-      if (recruiting.signed && recruiting.commitment) {
-        const program = programById(recruiting.commitment.programId);
-        return (
-          `You committed to ${program?.name ?? 'your school'} in month ` +
-          `${recruiting.commitment.monthsElapsed} ranked #${hype.nationalRank}, ` +
-          `and signed it.${flips}`
-        );
-      }
-
-      // Committed but never put pen to paper before the window shut.
-      if (recruiting.commitment) {
-        const program = programById(recruiting.commitment.programId);
-        return (
-          `You were committed to ${program?.name ?? 'a program'} but never signed ` +
-          `before the window closed.${flips}`
-        );
-      }
-
-      // Never committed at all — the deadline chose for you.
-      const best = bestOffer(recruiting);
-      const count = activeOffers(recruiting).length;
+    case 'college-washout': {
+      const program = college ? programById(college.programId) : null;
+      const transfers = college?.transfers ?? 0;
       return (
-        `You never committed anywhere. ${count} offer${count === 1 ? '' : 's'} ` +
-        `sat on the table until signing day passed, and ` +
-        `${best?.name ?? 'the best of them'} was the highest you had reached at ` +
-        `#${hype.nationalRank}.${flips}`
+        `You used up your eligibility at ${program?.name ?? 'college'}` +
+        (transfers > 0
+          ? ` after ${transfers} transfer${transfers === 1 ? '' : 's'}`
+          : '') +
+        `, and the draft never came calling.`
       );
     }
-  }
-}
 
-/** Which ending a signed player earned, by the tier they signed with. */
-function endingForSignedTier(programId: string): EndingId {
-  const program = programById(programId);
-  switch (program?.tier) {
-    case 'blueblood':
-      return 'blueblood-signee';
-    case 'high-major':
-      return 'high-major-signee';
-    case 'mid-major':
-      return 'mid-major-signee';
-    case 'low-major':
-      return 'low-major-signee';
-    default:
-      return 'juco-grinder';
+    case 'overseas-journeyman':
+      return (
+        `You went overseas at eighteen instead of taking the college route. The ` +
+        `money was real and the exposure never was.`
+      );
+
+    case 'undrafted-grinder':
+      return draft?.declared
+        ? `You declared for the ${draft.year} draft projected around #${draft.projection}, and all sixty picks went by.`
+        : 'You never got a draft call, and kept playing anyway.';
+
+    default: {
+      // Every remaining ending is a pro career.
+      const seasons = pro?.seasons ?? 0;
+      const rings = pro?.championships ?? 0;
+      const pickText =
+        draft && draft.pick > 0
+          ? `Drafted #${draft.pick} overall`
+          : 'Undrafted, and in the league anyway';
+
+      const ringText =
+        rings > 0
+          ? ` You finished with ${rings} championship${rings === 1 ? '' : 's'}.`
+          : ' You never won one.';
+
+      return `${pickText}. ${seasons} seasons in the league.${ringText}`;
+    }
   }
 }
 
 /**
- * Whether the high school slice is over.
+ * Which pro ending a career earned.
  *
- * SPEC §18 ends the vertical slice on signing day. The run closes once the
- * player has signed, or once the late signing period of senior year passes
- * without a signature.
+ * Deliberately not a pure "how good were you" ladder — a ring as a role player
+ * outranks a longer career without one, because SPEC §15 asks for exactly that.
  */
-export function isSliceOver(state: GameState): boolean {
-  if (state.careerEnd) return true;
-  if (state.recruiting.signed) return true;
+export function resolveProEnding(state: GameState): EndingId {
+  const pro = state.pro;
+  if (!pro) return 'undrafted-grinder';
 
-  const grade = gradeForClock(state.clock);
-  // May of senior year: the April late period has been and gone.
-  return grade >= 12 && state.clock.month >= 4 && state.clock.month <= 6;
+  const { seasons, championships, allStars } = pro;
+  const mvps = pro.awards.filter((a) => a.name === 'MVP').length;
+
+  if (allStars >= 8 && championships >= 1 && seasons >= 12) return 'hall-of-fame';
+  if (mvps >= 1 || allStars >= 6) return 'superstar';
+  if (allStars >= 2) return 'all-star';
+  // The win state: a long career, a real role, and a ring.
+  if (championships >= 1 && seasons >= 8) return 'role-player-with-ring';
+  if (seasons >= 9 && (pro.role === 'starter' || pro.role === 'star')) return 'starter';
+  if (seasons >= 4) return 'role-player';
+  if (seasons >= 1) return 'two-way-shuttle';
+  return 'undrafted-grinder';
 }
 
-export function resolveEnding(state: GameState): CareerEnd {
-  // A career-ending injury or a flameout already wrote its own ending.
-  if (state.careerEnd) return state.careerEnd;
-
-  let endingId: EndingId;
-
-  if (state.recruiting.signed && state.recruiting.commitment) {
-    endingId = endingForSignedTier(state.recruiting.commitment.programId);
-  } else {
-    const offers = activeOffers(state.recruiting);
-    const d1 = offers.filter((o) => programById(o.programId)?.tier !== 'juco');
-
-    if (state.academics.status === 'non-qualifier') {
-      // The academic gate is what closed the doors, whether or not JUCO is open.
-      endingId = offers.length > 0 ? 'juco-grinder' : 'academic-washout';
-    } else if (d1.length > 0) {
-      // Offers existed and were never signed — take the best one on the table.
-      const best = d1
-        .map((o) => programById(o.programId))
-        .filter((p): p is NonNullable<typeof p> => Boolean(p))
-        .sort((a, b) => a.rankCutoff - b.rankCutoff)[0];
-      endingId = best ? endingForSignedTier(best.id) : 'no-offers';
-    } else if (offers.length > 0) {
-      endingId = 'juco-grinder';
-    } else {
-      endingId = 'no-offers';
-    }
-  }
-
+export function buildEnding(state: GameState, endingId: EndingId): CareerEnd {
   const copy = ENDING_COPY[endingId];
-
-  // The signee copy says "you signed". Don't claim that if he never did —
-  // the level he reached is still real, but the signature is not.
-  const isSignee = endingId.endsWith('-signee');
-  const detail =
-    isSignee && !state.recruiting.signed
-      ? `You got to ${copy.reason.replace(' signee', '').toLowerCase()} level and had the ` +
-        `offer in hand, but signing day came and went without your name on anything.`
-      : copy.detail;
-
   return {
     endingId,
-    reason: isSignee && !state.recruiting.signed
-      ? `${copy.reason.replace(' signee', '')} — unsigned`
-      : copy.reason,
-    detail,
+    reason: copy.reason,
+    detail: copy.detail,
     decision: pivotalDecision(state, endingId),
     monthsElapsed: state.monthsElapsed,
   };
 }
 
-export function endingScore(id: EndingId): number {
-  return ENDING_COPY[id].score;
+/**
+ * The ending for a career that has run out of road at its current stage.
+ * Called when a stage closes with nowhere left to go.
+ */
+export function resolveEnding(state: GameState): CareerEnd {
+  if (state.careerEnd) return state.careerEnd;
+
+  let endingId: EndingId;
+
+  switch (state.stage) {
+    case 'nba':
+    case 'retired':
+      endingId = resolveProEnding(state);
+      break;
+
+    case 'overseas':
+      endingId = 'overseas-journeyman';
+      break;
+
+    case 'developmental':
+      endingId = 'undrafted-grinder';
+      break;
+
+    case 'college':
+      endingId = 'college-washout';
+      break;
+
+    case 'juco':
+      endingId = 'juco-dead-end';
+      break;
+
+    default: {
+      // Still in high school with nowhere to go.
+      if (state.academics.status === 'non-qualifier' && activeOffers(state.recruiting).length === 0) {
+        endingId = 'academic-washout';
+      } else {
+        endingId = 'rec-league';
+      }
+    }
+  }
+
+  return buildEnding(state, endingId);
 }
 
 /** Human label for the program signed with, used on the ending screen. */
 export function signedWith(state: GameState): string | null {
-  if (!state.recruiting.commitment) return null;
-  const program = programById(state.recruiting.commitment.programId);
+  const id = state.college?.programId ?? state.recruiting.commitment?.programId;
+  if (!id) return null;
+  const program = programById(id);
   if (!program) return null;
   return `${program.name} (${TIER_LABEL[program.tier]})`;
 }
+
+export { bestOffer };

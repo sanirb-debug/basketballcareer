@@ -163,6 +163,11 @@ export function createGame(
     recruiting,
     events: { pending: null, flags: {}, fired: [], decisions: [] },
     money: origin.incomeTier === 'affluent' ? 1500 : origin.incomeTier === 'comfortable' ? 600 : 150,
+    stage: 'highschool',
+    awaitingPath: false,
+    college: null,
+    draft: null,
+    pro: null,
     careerEnd: null,
     hidden: { genetics },
     log: [

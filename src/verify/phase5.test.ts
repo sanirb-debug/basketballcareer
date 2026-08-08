@@ -35,17 +35,29 @@ const INPUT: CreationInput = {
 
 describe('the spec assertion: the board moves on its own (SPEC §18 Phase 5)', () => {
   test('rankings shift month to month with no player input at all', () => {
-    let state = createGame(555, INPUT);
-    const ranks: number[] = [state.hype.nationalRank];
+    // Checked across seeds rather than one lucky run: a single seed's board
+    // can legitimately be quiet for a stretch.
+    let movedInEverySeed = true;
+    let totalDistinct = 0;
 
-    // Twelve months of doing absolutely nothing.
-    for (let i = 0; i < 12; i++) {
-      state = autoTick(state, []);
-      ranks.push(state.hype.nationalRank);
+    for (let seed = 1; seed <= 6; seed++) {
+      let state = createGame(seed, INPUT);
+      const ranks: number[] = [state.hype.nationalRank];
+
+      // Twelve months of doing absolutely nothing.
+      for (let i = 0; i < 12; i++) {
+        state = autoTick(state, []);
+        ranks.push(state.hype.nationalRank);
+      }
+
+      const distinct = new Set(ranks).size;
+      totalDistinct += distinct;
+      if (distinct < 2) movedInEverySeed = false;
     }
 
-    const distinct = new Set(ranks);
-    expect(distinct.size).toBeGreaterThan(3);
+    expect(movedInEverySeed).toBe(true);
+    // And on average the board is genuinely restless, not nudging once.
+    expect(totalDistinct / 6).toBeGreaterThan(3);
   });
 
   test('the other 400 prospects move whether or not the player does', () => {

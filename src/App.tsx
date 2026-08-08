@@ -184,7 +184,7 @@ export default function App() {
 
   // Trim any selection that no longer fits — the budget shrinks from four to
   // two the moment the season opens.
-  const budget = state ? phaseFor(state.clock).actionPoints : 0;
+  const budget = state ? phaseFor(state.clock, state.stage).actionPoints : 0;
   const fitted = chosen.length > budget ? chosen.slice(0, budget) : chosen;
 
   const view = state ? toPublicView(state) : null;

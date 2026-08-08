@@ -1,4 +1,4 @@
-import type { Clock } from './types';
+import type { CareerStage, Clock } from './types';
 
 /**
  * The sim clock and the basketball calendar (SPEC §3).
@@ -33,7 +33,11 @@ export type SeasonPhase =
   | 'POSTSEASON'
   | 'AAU'
   | 'LIVE_PERIOD'
-  | 'OFFSEASON';
+  | 'OFFSEASON'
+  | 'PRESEASON'
+  | 'PORTAL'
+  | 'FREE_AGENCY'
+  | 'SUMMER';
 
 export interface PhaseInfo {
   phase: SeasonPhase;
@@ -45,8 +49,8 @@ export interface PhaseInfo {
   actionPoints: number;
 }
 
-/** Indexed by calendar month, 0 = January. */
-const PHASE_BY_MONTH: readonly PhaseInfo[] = [
+/** High school, indexed by calendar month, 0 = January. */
+const HIGH_SCHOOL_PHASES: readonly PhaseInfo[] = [
   { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Jan
   { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Feb
   { phase: 'POSTSEASON', label: 'Playoffs', actionPoints: 1 }, // Mar
@@ -61,8 +65,58 @@ const PHASE_BY_MONTH: readonly PhaseInfo[] = [
   { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Dec
 ];
 
-export function phaseFor(clock: Clock): PhaseInfo {
-  return PHASE_BY_MONTH[clock.month] as PhaseInfo;
+/**
+ * College and JUCO. The spring is the portal and the stay-or-go decision
+ * rather than the AAU circuit, and September–October is preseason.
+ */
+const COLLEGE_PHASES: readonly PhaseInfo[] = [
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Jan
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Feb
+  { phase: 'POSTSEASON', label: 'March', actionPoints: 1 }, // Mar
+  { phase: 'PORTAL', label: 'Portal / Stay-or-Go', actionPoints: 3 }, // Apr
+  { phase: 'PORTAL', label: 'Portal / Stay-or-Go', actionPoints: 3 }, // May
+  { phase: 'SUMMER', label: 'Summer', actionPoints: 4 }, // Jun
+  { phase: 'SUMMER', label: 'Summer', actionPoints: 4 }, // Jul
+  { phase: 'SUMMER', label: 'Summer', actionPoints: 4 }, // Aug
+  { phase: 'PRESEASON', label: 'Preseason', actionPoints: 3 }, // Sep
+  { phase: 'PRESEASON', label: 'Preseason', actionPoints: 3 }, // Oct
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Nov
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 2 }, // Dec
+];
+
+/** The pro calendar: an October–March grind, April playoffs, July free agency. */
+const PRO_PHASES: readonly PhaseInfo[] = [
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 1 }, // Jan
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 1 }, // Feb
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 1 }, // Mar
+  { phase: 'POSTSEASON', label: 'Playoffs', actionPoints: 1 }, // Apr
+  { phase: 'OFFSEASON', label: 'Offseason', actionPoints: 3 }, // May
+  { phase: 'OFFSEASON', label: 'Offseason', actionPoints: 3 }, // Jun
+  { phase: 'FREE_AGENCY', label: 'Free Agency', actionPoints: 2 }, // Jul
+  { phase: 'OFFSEASON', label: 'Offseason', actionPoints: 4 }, // Aug
+  { phase: 'PRESEASON', label: 'Training Camp', actionPoints: 3 }, // Sep
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 1 }, // Oct
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 1 }, // Nov
+  { phase: 'REGULAR_SEASON', label: 'Season', actionPoints: 1 }, // Dec
+];
+
+/**
+ * The action-point budget and month texture depend on where a career is
+ * (SPEC §3, §14). A July in high school is the live period; a July in the
+ * league is free agency; a July in college is summer workouts.
+ */
+export function phaseFor(clock: Clock, stage: CareerStage = 'highschool'): PhaseInfo {
+  switch (stage) {
+    case 'nba':
+      return PRO_PHASES[clock.month] as PhaseInfo;
+    case 'college':
+    case 'juco':
+    case 'overseas':
+    case 'developmental':
+      return COLLEGE_PHASES[clock.month] as PhaseInfo;
+    default:
+      return HIGH_SCHOOL_PHASES[clock.month] as PhaseInfo;
+  }
 }
 
 /** Absolute month index, for arithmetic across year boundaries. */

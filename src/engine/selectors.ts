@@ -171,7 +171,7 @@ export interface PublicView {
 
 export function toPublicView(state: GameState): PublicView {
   const { player, clock } = state;
-  const phase = phaseFor(clock);
+  const phase = phaseFor(clock, state.stage);
   const grade = gradeForClock(clock);
   const months = ageInMonths(clock, player.birthYear, player.birthMonth);
   const monthAbs = absoluteMonth(clock.year, clock.month);

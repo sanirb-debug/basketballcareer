@@ -48,7 +48,7 @@ const ROTATION: ActionId[] = [
 ];
 
 function budget(state: GameState): number {
-  return phaseFor(state.clock).actionPoints;
+  return phaseFor(state.clock, state.stage).actionPoints;
 }
 
 function runCareer(

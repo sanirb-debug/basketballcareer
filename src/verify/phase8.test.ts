@@ -3,15 +3,9 @@ import { describe, expect, test } from 'vitest';
 import { createGame, type CreationInput } from '../engine/newGame';
 import { autoTickMonths } from './harness';
 import { phaseFor } from '../engine/calendar';
-import {
-  endingCopy,
-  endingScore,
-  isSliceOver,
-  resolveEnding,
-  signedWith,
-} from '../engine/endings';
+import { endingCopy, endingScore, resolveEnding } from '../engine/endings';
 import { exportCareerText } from '../engine/careerExport';
-import { activeOffers, commitTo, sign } from '../engine/recruiting';
+import { activeOffers } from '../engine/recruiting';
 import type { EndingId, GameState, MonthAction } from '../engine/types';
 
 /**
@@ -35,19 +29,30 @@ const INPUT: CreationInput = {
 const ALL_ENDINGS: EndingId[] = [
   'career-ending-injury',
   'academic-washout',
-  'no-offers',
-  'juco-grinder',
-  'low-major-signee',
-  'mid-major-signee',
-  'high-major-signee',
-  'blueblood-signee',
+  'rec-league',
   'off-court-flameout',
+  'college-washout',
+  'juco-dead-end',
+  'overseas-journeyman',
+  'undrafted-grinder',
+  'two-way-shuttle',
+  'role-player',
+  'role-player-with-ring',
+  'starter',
+  'all-star',
+  'superstar',
+  'hall-of-fame',
 ];
 
-/** Play a full career with a decent, human-ish policy. */
-function playCareer(seed: number, months = 60): GameState {
+/**
+ * Play a whole career with a decent, human-ish policy.
+ *
+ * The default horizon covers high school through a full professional career
+ * and out the other side — careers no longer stop at signing day (SPEC §14).
+ */
+function playCareer(seed: number, months = 320): GameState {
   return autoTickMonths(createGame(seed, INPUT), months, (s) => {
-    const budget = phaseFor(s.clock).actionPoints;
+    const budget = phaseFor(s.clock, s.stage).actionPoints;
     const picks: MonthAction[] = [];
     if (s.condition.energy < 45) picks.push('rest');
     if (s.academics.gpa < 2.8) picks.push('study');
@@ -71,33 +76,46 @@ describe('every ending is a named terminal state (SPEC §15)', () => {
     }
   });
 
-  test('a smaller outcome is written as a result, not a consolation', () => {
-    // SPEC §15's design note: this sim has to make a modest career read as
-    // a genuine success rather than a failure to become a superstar.
-    const mid = endingCopy('mid-major-signee');
-    expect(mid.detail).toMatch(/career worth having|never get/i);
-    expect(mid.score).toBeGreaterThan(endingCopy('juco-grinder').score);
+  test('a ring as a role player outranks a starrier career without one', () => {
+    // SPEC §15's design note, which is the whole point of the scoring: a
+    // 6th-man who lasts and wins has to read as a success, not a shortfall.
+    expect(endingScore('role-player-with-ring')).toBeGreaterThan(
+      endingScore('starter'),
+    );
+    expect(endingCopy('role-player-with-ring').detail).toMatch(
+      /what a successful career actually looks like/i,
+    );
+  });
 
-    // And JUCO is explicitly survivable, per SPEC §9.
-    expect(endingCopy('juco-grinder').detail).toMatch(/not the end|road/i);
+  test('the smaller outcomes are written as results, not consolations', () => {
+    expect(endingCopy('role-player').detail).toMatch(/real career|never got/i);
+    expect(endingCopy('overseas-journeyman').detail).toMatch(/very good players/i);
+    expect(endingCopy('undrafted-grinder').detail).toMatch(/kept playing/i);
   });
 
   test('the scoring ladder is ordered sensibly', () => {
-    expect(endingScore('blueblood-signee')).toBeGreaterThan(
-      endingScore('high-major-signee'),
-    );
-    expect(endingScore('high-major-signee')).toBeGreaterThan(
-      endingScore('mid-major-signee'),
-    );
-    expect(endingScore('mid-major-signee')).toBeGreaterThan(
-      endingScore('low-major-signee'),
-    );
-    expect(endingScore('low-major-signee')).toBeGreaterThan(
-      endingScore('juco-grinder'),
-    );
-    expect(endingScore('juco-grinder')).toBeGreaterThan(
-      endingScore('academic-washout'),
-    );
+    const ladder: EndingId[] = [
+      'hall-of-fame',
+      'superstar',
+      'all-star',
+      'role-player-with-ring',
+      'starter',
+      'role-player',
+      'two-way-shuttle',
+      'undrafted-grinder',
+      'overseas-journeyman',
+      'college-washout',
+      'juco-dead-end',
+      'academic-washout',
+      'rec-league',
+      'off-court-flameout',
+    ];
+    for (let i = 1; i < ladder.length; i++) {
+      expect(
+        endingScore(ladder[i - 1] as EndingId),
+        `${ladder[i - 1]} > ${ladder[i]}`,
+      ).toBeGreaterThan(endingScore(ladder[i] as EndingId));
+    }
   });
 });
 
@@ -121,10 +139,10 @@ describe('the ending names the decision that produced it (SPEC §15)', () => {
     expect(ending.decision).toContain('6 of 16');
   });
 
-  test('no offers cites the ranking and the school chosen at thirteen', () => {
+  test('the rec-league ending cites the ranking and the school chosen at thirteen', () => {
     const state = createGame(5, INPUT);
     const ending = resolveEnding(state);
-    expect(ending.endingId).toBe('no-offers');
+    expect(ending.endingId).toBe('rec-league');
     expect(ending.decision).toContain(`#${state.hype.nationalRank}`);
     expect(ending.decision).toContain(state.school.name);
   });
@@ -142,35 +160,10 @@ describe('the ending names the decision that produced it (SPEC §15)', () => {
   });
 });
 
-describe('the slice ends on signing day (SPEC §18)', () => {
+describe('high school hands off rather than ending (SPEC §14, §18)', () => {
   test('a fresh run is not over', () => {
-    expect(isSliceOver(createGame(1, INPUT))).toBe(false);
-  });
-
-  test('signing ends it immediately', () => {
-    const state = createGame(1, INPUT);
-    const withOffer: GameState = {
-      ...state,
-      recruiting: {
-        ...state.recruiting,
-        offers: [
-          {
-            programId: 'crestview',
-            monthOffered: 40,
-            active: true,
-            pulledReason: null,
-          },
-        ],
-      },
-    };
-
-    const committed = commitTo(withOffer.recruiting, 'crestview', 45).recruiting;
-    const signed = sign(committed).recruiting;
-    expect(isSliceOver({ ...withOffer, recruiting: signed })).toBe(true);
-
-    const ending = resolveEnding({ ...withOffer, recruiting: signed });
-    expect(ending.endingId).toBe('low-major-signee');
-    expect(signedWith({ ...withOffer, recruiting: signed })).toContain('Crestview');
+    expect(createGame(1, INPUT).careerEnd).toBeNull();
+    expect(createGame(1, INPUT).awaitingPath).toBe(false);
   });
 
   test('a full career reaches an ending on its own', () => {
@@ -196,9 +189,9 @@ describe('the slice ends on signing day (SPEC §18)', () => {
 
     const chaser = autoTickMonths(
       createGame(3, { ...INPUT, schoolTier: 'powerhouse', homeState: 'California' }),
-      60,
+      320,
       (s) => {
-        const budget = phaseFor(s.clock).actionPoints;
+        const budget = phaseFor(s.clock, s.stage).actionPoints;
         const picks: MonthAction[] = [];
         if (s.condition.energy < 40) picks.push('rest');
         if (s.academics.gpa < 2.6) picks.push('study');
@@ -207,8 +200,8 @@ describe('the slice ends on signing day (SPEC §18)', () => {
       },
     );
 
-    const dropout = autoTickMonths(createGame(3, INPUT), 60, (s) => {
-      const budget = phaseFor(s.clock).actionPoints;
+    const dropout = autoTickMonths(createGame(3, INPUT), 320, (s) => {
+      const budget = phaseFor(s.clock, s.stage).actionPoints;
       return Array.from({ length: budget }, () => 'lift' as MonthAction);
     });
 
@@ -288,6 +281,7 @@ describe('the career archive and text export (SPEC §16.4)', () => {
 
   test('exporting works on an unfinished run too', () => {
     const midRun = autoTickMonths(createGame(6, INPUT), 20, () => []);
+    expect(midRun.careerEnd).toBeNull();
     const text = exportCareerText(midRun);
     expect(text).toContain('HOOP LIFE');
     expect(text).not.toContain('HOW IT ENDED');
