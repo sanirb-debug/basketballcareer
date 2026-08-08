@@ -185,7 +185,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
 
   const topGain = applied.gained[0];
   if (topGain && topGain.amount >= 0.2) {
-    note('training', `The work is showing — ${labelFor(topGain.key)} is coming along.`);
+    note('training', `The work is showing. My ${labelFor(topGain.key)} is coming along.`);
   }
 
   // --- 2. Academics (SPEC §9) -------------------------------------------
@@ -265,7 +265,12 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     );
     if (offered !== aauTier) {
       aauTier = offered;
-      note('hype', `Spring circuit set: ${aauTier === 'none' ? 'no travel team this year' : aauTier.toUpperCase()}.`);
+      note(
+        'hype',
+        aauTier === 'none'
+          ? 'No travel team for me this spring.'
+          : `I am playing ${aauTier.toUpperCase()} on the spring circuit.`,
+      );
     }
   }
 
@@ -364,7 +369,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
       } else {
         note(
           'injury',
-          `${capitalize(roll.injury.name)} — out ${roll.injury.monthsRemaining} month${
+          `I picked up a ${roll.injury.name.toLowerCase()}. Out for ${roll.injury.monthsRemaining} month${
             roll.injury.monthsRemaining === 1 ? '' : 's'
           }.`,
         );
@@ -400,7 +405,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     note(
       'system',
       inHighSchool
-        ? `${gradeLabel(season.grade)} year done: ${season.wins}-${season.losses}, ${ppg} ppg.`
+        ? `I finished ${gradeLabel(season.grade).toLowerCase()} year at ${season.wins}-${season.losses}, averaging ${ppg} a game.`
         : `Season done: ${season.wins}-${season.losses}, ${ppg} ppg.`,
     );
     // The postseason result has to be recorded before the season is cleared,
@@ -426,7 +431,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   injury = advanceRehab(injury);
   let eventFlags = state.events.flags;
   if (healingFrom && !injury) {
-    note('injury', `Cleared to play — the ${healingFrom.name} has healed.`);
+    note('injury', `I was cleared to play. The ${healingFrom.name.toLowerCase()} has healed.`);
     // Engine-set flag: unlocks the first-game-back event (SPEC §12 chaining).
     eventFlags = { ...eventFlags, returned_from_injury: true };
   }
@@ -547,11 +552,11 @@ function advanceStage(state: GameState, note: Note, rng: Rng): GameState {
       if (!done) break;
 
       if (!hasAnyPath(next)) {
-        note('system', 'No road out of high school opened.');
+        note('system', 'No road out of high school opened for me.');
         return { ...next, careerEnd: resolveEnding(next) };
       }
 
-      note('system', 'High school is over. Time to choose what happens next.');
+      note('system', 'High school is over. I have to choose what happens next.');
       return {
         ...next,
         awaitingPath: true,
@@ -568,10 +573,10 @@ function advanceStage(state: GameState, note: Note, rng: Rng): GameState {
       // whole point of the JUCO road — it is a detour, not a dead end.
       if (collegeExhausted(next)) {
         if (!hasAnyPath(next)) {
-          note('system', 'Two years at junior college and nobody came back.');
+          note('system', 'Two years at junior college, and nobody came back for me.');
           return { ...next, careerEnd: resolveEnding(next) };
         }
-        note('system', 'Junior college is done. Time to decide where you go next.');
+        note('system', 'Junior college is done. I have to decide where I go next.');
         return { ...next, awaitingPath: true };
       }
       break;
@@ -612,10 +617,10 @@ function advanceStage(state: GameState, note: Note, rng: Rng): GameState {
         next.draft?.completed
       ) {
         if (hasAnyPath(next)) {
-          note('system', 'College is over. There is still basketball to play.');
+          note('system', 'College is over, and there is still basketball to play.');
           return { ...next, awaitingPath: true };
         }
-        note('system', 'College is over and no professional door opened.');
+        note('system', 'College is over, and no professional door opened for me.');
         return { ...next, careerEnd: resolveEnding(next) };
       }
       break;
@@ -704,12 +709,14 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
       : seasonYear !== null && state.stage !== 'retired';
 
   if (canOpen && (!season || season.seasonYear !== seasonYear)) {
+    // Names the season without the word "season" in it, so the notification
+    // can add one itself and read as a sentence.
     const label =
       state.stage === 'highschool'
         ? `${gradeLabel(gradeForClock(ctx.clock))} season`
         : state.stage === 'nba'
-          ? 'Season'
-          : `Year ${state.college?.year ?? 1}`;
+          ? 'season'
+          : `year ${state.college?.year ?? 1} season`;
     season = createSeason(
       rng,
       seasonYear as number,
@@ -719,7 +726,7 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
         ? gradeForClock(ctx.clock)
         : (state.college?.year ?? state.pro?.seasons ?? 1),
     );
-    ctx.note('system', `${label} opens at ${team.name}.`);
+    ctx.note('system', `My ${label.toLowerCase()} opened at ${team.name}.`);
   }
 
   const idle: PlayResult = {
@@ -833,10 +840,10 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
   if (gamesPlayed > 0) {
     ctx.note(
       'game',
-      `${wins}-${losses} this month, averaging ${(points / gamesPlayed).toFixed(1)} a night.`,
+      `We went ${wins}-${losses} this month. I averaged ${(points / gamesPlayed).toFixed(1)} a night.`,
     );
   } else if (scheduled.length > 0) {
-    ctx.note('game', `Watched all ${scheduled.length} from the bench.`);
+    ctx.note('game', `I watched all ${scheduled.length} from the bench.`);
   }
 
   return {
@@ -888,9 +895,6 @@ function updateCoachTrust(current: number, ctx: TrustContext): number {
   return clamp(trust, COACH_TRUST.MIN, COACH_TRUST.MAX);
 }
 
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
 
 /** Turn an attribute key into something readable in a log line. */
 const ATTRIBUTE_LABELS: Record<string, string> = {

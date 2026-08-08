@@ -54,7 +54,7 @@ import {
 } from './save/saveGame';
 import SlotPicker from './ui/SlotPicker';
 import CharacterCreation from './ui/CharacterCreation';
-import MonthScreen from './ui/MonthScreen';
+import LifeScreen from './ui/LifeScreen';
 import DebugPanel from './ui/DebugPanel';
 import CareerEndScreen from './ui/CareerEndScreen';
 import PathChoiceScreen from './ui/PathChoiceScreen';
@@ -305,7 +305,7 @@ export default function App() {
               onChoose={handleChoosePath}
             />
           ) : (
-            <MonthScreen
+            <LifeScreen
               view={view}
               training={state.training}
               chosen={fitted}

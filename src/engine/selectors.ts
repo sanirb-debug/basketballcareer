@@ -33,6 +33,7 @@ import {
   transferOptions,
 } from './decisions';
 import { SCHOOLS, SCHOOL_TIERS, isMiddleSchool } from './school';
+import { toFirstPerson } from './voice';
 import {
   PARTIES,
   describeDistraction,
@@ -257,6 +258,15 @@ export interface PublicView {
   history: SeasonSummary[];
   careerEnd: GameState['careerEnd'];
   recentLog: { text: string; date: string; kind: string }[];
+  /**
+   * The life feed: every month that has anything to say, oldest first, with
+   * the text already turned into first person (SPEC §17).
+   *
+   * Grouped here rather than in the component because the grouping key is
+   * `monthsElapsed` — which the view otherwise flattens away — and because a
+   * feed of 260 months should be assembled once per tick, not per render.
+   */
+  feed: { date: string; monthsElapsed: number; lines: { text: string; kind: string }[] }[];
   grade: number;
   gradeLabel: string;
   /**
@@ -388,6 +398,7 @@ export function toPublicView(state: GameState): PublicView {
         kind: entry.kind,
         date: formatClock({ year: entry.year, month: entry.month }),
       })),
+    feed: toFeed(state),
     grade,
     gradeLabel: gradeLabel(grade),
     trainingCeiling: Math.round(skillCeiling(state.player.hiddenMeta.potential)),
@@ -723,4 +734,31 @@ function toRomanceView(
     parties: PARTIES,
     hasProperty: hasProperty(state.assets),
   };
+}
+
+
+/**
+ * The life feed.
+ *
+ * One block per month that produced any lines at all — a month where nothing
+ * happened simply is not in the list, which is what keeps the scroll readable
+ * across a twenty-year career.
+ */
+function toFeed(state: GameState): PublicView['feed'] {
+  const blocks: PublicView['feed'] = [];
+  let current: PublicView['feed'][number] | null = null;
+
+  for (const entry of state.log) {
+    if (!current || current.monthsElapsed !== entry.monthsElapsed) {
+      current = {
+        date: formatClock({ year: entry.year, month: entry.month }),
+        monthsElapsed: entry.monthsElapsed,
+        lines: [],
+      };
+      blocks.push(current);
+    }
+    current.lines.push({ text: toFirstPerson(entry.text), kind: entry.kind });
+  }
+
+  return blocks;
 }

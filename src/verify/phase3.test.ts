@@ -90,8 +90,18 @@ function spamPolicy(state: GameState): ActionId[] {
   return picks;
 }
 
+/**
+ * Injuries picked up, not injury log lines — the `injury` kind also carries
+ * the all-clear message when one heals.
+ *
+ * Matched by excluding the recovery line rather than by looking for a word in
+ * the prose: this assertion is about the injury *rate*, and it should not
+ * start failing because somebody reworded a notification.
+ */
 function injuryCount(state: GameState): number {
-  return state.log.filter((e) => e.kind === 'injury' && e.text.includes('out')).length;
+  return state.log.filter(
+    (e) => e.kind === 'injury' && !/cleared to play/i.test(e.text),
+  ).length;
 }
 
 describe('the spec assertion: rotating beats spamming (SPEC §18 Phase 3)', () => {
