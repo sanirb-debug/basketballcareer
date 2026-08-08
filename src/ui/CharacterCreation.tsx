@@ -30,11 +30,21 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
   const [schoolTier, setSchoolTier] = useState<SchoolTier>('public');
   const [schoolName, setSchoolName] = useState('');
   const [seedText, setSeedText] = useState('');
+  const [attempted, setAttempted] = useState(false);
 
-  const canSubmit = name.trim().length > 0 && homeCity.trim().length > 0;
+  /*
+   * A disabled button with no explanation is a dead end — the player is left
+   * clicking something that silently does nothing. Track exactly what is
+   * missing so the form can say so.
+   */
+  const missing: string[] = [];
+  if (!name.trim()) missing.push('a name');
+  if (!homeCity.trim()) missing.push('a home city');
+  const canSubmit = missing.length === 0;
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
+    setAttempted(true);
     if (!canSubmit) return;
     onCreate(
       {
@@ -63,13 +73,15 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
       <div className="mt-10 grid grid-cols-2 gap-6">
         <div className="col-span-2">
           <label className={labelClass} htmlFor="name">
-            Name
+            Name <span className="text-orange-500">*</span>
           </label>
           <input
             id="name"
-            className={fieldClass}
             value={name}
             onChange={(e) => setName(e.target.value)}
+            className={`${fieldClass} ${
+              attempted && !name.trim() ? 'border-red-600' : ''
+            }`}
             autoFocus
           />
         </div>
@@ -146,11 +158,13 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
 
         <div className="col-span-2">
           <label className={labelClass} htmlFor="city">
-            Home city
+            Home city <span className="text-orange-500">*</span>
           </label>
           <input
             id="city"
-            className={fieldClass}
+            className={`${fieldClass} ${
+              attempted && !homeCity.trim() ? 'border-red-600' : ''
+            }`}
             value={homeCity}
             onChange={(e) => setHomeCity(e.target.value)}
           />
@@ -233,7 +247,13 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
         </p>
       </div>
 
-      <div className="mt-10 flex gap-3">
+      {missing.length > 0 && (
+        <p className="mt-8 text-sm text-amber-400">
+          Still need {missing.join(' and ')} before you can start.
+        </p>
+      )}
+
+      <div className="mt-4 flex gap-3">
         <button
           type="submit"
           disabled={!canSubmit}
