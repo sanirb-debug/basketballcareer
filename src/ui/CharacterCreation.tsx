@@ -1,5 +1,11 @@
 import { useState } from 'react';
 import { SELECTABLE_STATES } from '../engine/origin';
+import {
+  COUNTRIES,
+  DEFAULT_COUNTRY,
+  countryById,
+  isUSA,
+} from '../engine/countries';
 import { SCHOOLS, SCHOOL_TIERS } from '../engine/school';
 import {
   POSITIONS,
@@ -15,6 +21,32 @@ interface Props {
   onCancel: () => void;
 }
 
+/**
+ * The honest pitch for picking a hard country.
+ *
+ * Exposure is a real penalty and the screen says so — but it also says what
+ * you get for it, because being the first player from somewhere is the single
+ * best story this game can tell.
+ */
+function describeCountry(id: string): string {
+  const c = countryById(id);
+  const seen =
+    c.exposure >= 0.45
+      ? 'Scouts already have this country on a list.'
+      : c.exposure >= 0.25
+        ? 'You will have to go and find the scouts. They are not coming here.'
+        : 'Almost nobody is watching. Everything you get, you go and take.';
+
+  const history =
+    c.nbaPlayersEver === 0
+      ? `No one from ${c.name} has ever reached the NBA. If you do it, every single thing you do is the first time.`
+      : c.nbaPlayersEver < 6
+        ? `Only a handful of ${c.demonym} players have ever reached the NBA.`
+        : `${c.demonym} players are a known quantity at the top level.`;
+
+  return `${seen} ${history}`;
+}
+
 const labelClass =
   'block text-xs font-medium uppercase tracking-widest text-neutral-500';
 const fieldClass =
@@ -26,6 +58,7 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
   const [jerseyNumber, setJerseyNumber] = useState(3);
   const [handedness, setHandedness] = useState<Handedness>('right');
   const [homeCity, setHomeCity] = useState('');
+  const [country, setCountry] = useState(DEFAULT_COUNTRY);
   const [homeState, setHomeState] = useState('Indiana');
   const [schoolTier, setSchoolTier] = useState<SchoolTier>('public');
   const [schoolName, setSchoolName] = useState('');
@@ -54,6 +87,7 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
         handedness,
         homeCity: homeCity.trim(),
         homeState,
+        country,
         schoolTier,
         ...(schoolName.trim() ? { schoolName: schoolName.trim() } : {}),
       },
@@ -139,22 +173,49 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
         </div>
 
         <div>
-          <label className={labelClass} htmlFor="state">
-            Home state
+          <label className={labelClass} htmlFor="country">
+            Country
           </label>
           <select
-            id="state"
+            id="country"
             className={fieldClass}
-            value={homeState}
-            onChange={(e) => setHomeState(e.target.value)}
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
           >
-            {SELECTABLE_STATES.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {COUNTRIES.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.flag} {c.name}
               </option>
             ))}
           </select>
         </div>
+
+        {isUSA(country) ? (
+          <div>
+            <label className={labelClass} htmlFor="state">
+              Home state
+            </label>
+            <select
+              id="state"
+              className={fieldClass}
+              value={homeState}
+              onChange={(e) => setHomeState(e.target.value)}
+            >
+              {SELECTABLE_STATES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <span className={labelClass}>What that means</span>
+            <p className="mt-2 text-sm leading-snug text-neutral-400">
+              {describeCountry(country)}
+            </p>
+          </div>
+        )}
 
         <div className="col-span-2">
           <label className={labelClass} htmlFor="city">

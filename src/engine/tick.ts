@@ -2,7 +2,13 @@ import { clamp, createRng, type Rng } from './rng';
 import { absoluteMonth, advanceClock, ageInMonths, phaseFor } from './calendar';
 import { growOneMonth } from './growth';
 import { applyDerivedAttributes, overallFor } from './attributes';
-import { ACTIONS, TRAINING, applyActions, normalizeActions } from './actions';
+import {
+  ACTIONS,
+  ENERGY_ENABLED,
+  TRAINING,
+  applyActions,
+  normalizeActions,
+} from './actions';
 import { advanceRehab, effectiveAttributes, rollInjury } from './condition';
 import { MIDDLE_SCHOOL_TEAM, isMiddleSchool } from './school';
 import { GAME_MINUTES, LEVELS, levelFor, minutesFor, resolveGame } from './gameSim';
@@ -35,13 +41,17 @@ import { initialDraft } from './draft';
 import { advanceAcademics, isSchoolMonth } from './academics';
 import { advanceClass, playerRank } from './prospects';
 import { advanceHype, offeredAauTier } from './hype';
-import { exposureForState } from './origin';
 import { advanceRecruiting } from './recruiting';
 import { advanceRelationships, coachTrustBonus } from './relationships';
 import { agePeople } from './people';
 import { assetEffects, driftFollowers } from './activities';
 import { distractionEffects, settleNightlife } from './nightlife';
 import { CHILD, childName } from './dating';
+import {
+  milestoneHeadline,
+  milestoneHype,
+  type MilestoneId,
+} from './countries';
 import { selectEvent } from './events/engine';
 import { resolveEnding } from './endings';
 import type {
@@ -225,7 +235,12 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
       hype: state.hype.hype,
       aauTier: state.hype.aauTier,
       schoolExposure: state.school.exposureMultiplier,
-      stateExposure: exposureForState(state.origin.homeState),
+      // Where you are from, already resolved at creation: a US state's
+      // exposure, or a country's. Reading `exposureForState` directly here
+      // was the bug that made nationality decorative — an international
+      // career got its state's exposure, which for anyone outside the US is
+      // whatever value the unused state field happened to hold.
+      stateExposure: state.origin.exposureMultiplier,
       pointsPerGame:
         played.gamesPlayed > 0 ? played.points / played.gamesPlayed : 0,
       gamesPlayed: played.gamesPlayed,
@@ -347,7 +362,9 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   if (!injury) {
     const roll = rollInjury(
       rng,
-      energy,
+      // With energy off, the roll sees a rested player and depends only on
+      // fragility and minutes played.
+      ENERGY_ENABLED ? energy : TRAINING.ENERGY_MAX,
       // Recovery boots and a private chef do not make you unbreakable, but
       // they move the number. `assetEffects` floors the multiplier at 0.72.
       state.player.hiddenMeta.injuryProneness * gear.injuryFactor * drag.injuryFactor,
@@ -530,6 +547,11 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     next = { ...next, log: [...state.log, ...log] };
   }
 
+  // --- 18. Firsts (SPEC §7) ---------------------------------------------
+  // Last, so a milestone reported this month reflects everything that
+  // happened in it — including a stage change that only just landed.
+  next = recordMilestones(next, monthsElapsed);
+
   return next;
 }
 
@@ -650,6 +672,79 @@ function advanceStage(state: GameState, note: Note, rng: Rng): GameState {
   }
 
   return next;
+}
+
+/**
+ * Fire any milestone the career has just reached.
+ *
+ * The headline scales with the player's country: an American getting drafted
+ * is a line in a local paper, and somebody from a country that has never had
+ * an NBA player is national news. `state.milestones` is the ledger that stops
+ * a headline firing twice.
+ */
+function recordMilestones(state: GameState, monthsElapsed: number): GameState {
+  const reached: MilestoneId[] = [];
+  const has = (id: MilestoneId) => state.milestones.includes(id);
+
+  if (!has('first-offer') && state.recruiting.offers.length > 0) {
+    reached.push('first-offer');
+  }
+  if (!has('signed-d1') && state.recruiting.signed) reached.push('signed-d1');
+  if (
+    !has('college-debut') &&
+    state.stage === 'college' &&
+    (state.season?.schedule.some((g) => g.played) ?? false)
+  ) {
+    reached.push('college-debut');
+  }
+  if (!has('drafted') && state.draft?.completed && state.draft.pick > 0) {
+    reached.push('drafted');
+  }
+  if (
+    !has('nba-debut') &&
+    state.stage === 'nba' &&
+    (state.season?.schedule.some((g) => g.played) ?? false)
+  ) {
+    reached.push('nba-debut');
+  }
+  if (
+    !has('nba-starter') &&
+    state.pro &&
+    ['starter', 'star', 'franchise'].includes(state.pro.role)
+  ) {
+    reached.push('nba-starter');
+  }
+  if (!has('all-star') && (state.pro?.allStars ?? 0) > 0) {
+    reached.push('all-star');
+  }
+  if (!has('champion') && (state.pro?.championships ?? 0) > 0) {
+    reached.push('champion');
+  }
+
+  if (reached.length === 0) return state;
+
+  const entries: LogEntry[] = [];
+  let hype = state.hype.hype;
+
+  for (const id of reached) {
+    const text = milestoneHeadline(id, state.origin.country);
+    if (!text) continue;
+    entries.push({
+      monthsElapsed,
+      year: state.clock.year,
+      month: state.clock.month,
+      kind: 'hype',
+      text,
+    });
+    hype = clamp(hype + milestoneHype(id, state.origin.country), 0, 100);
+  }
+
+  return {
+    ...state,
+    milestones: [...state.milestones, ...reached],
+    hype: { ...state.hype, hype },
+    log: [...state.log, ...entries],
+  };
 }
 
 function validateActions(
@@ -812,11 +907,13 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
       points += outcome.box.points;
       opponentTotal += game.opponentStrength;
       gamesPlayed++;
-      energy = clamp(
-        energy - minutes * ENERGY_PER_MINUTE,
-        TRAINING.ENERGY_MIN,
-        TRAINING.ENERGY_MAX,
-      );
+      if (ENERGY_ENABLED) {
+        energy = clamp(
+          energy - minutes * ENERGY_PER_MINUTE,
+          TRAINING.ENERGY_MIN,
+          TRAINING.ENERGY_MAX,
+        );
+      }
     }
 
     resolved.set(game.id, {

@@ -16,6 +16,7 @@ import { initialRecruiting } from './recruiting';
 import { initialRelationships } from './relationships';
 import { initialPeople } from './people';
 import { initialNightlife } from './nightlife';
+import { DEFAULT_COUNTRY, countryById, isUSA } from './countries';
 import { designateRival, generateClass, playerRank, rankingScore } from './prospects';
 import { overallFor } from './attributes';
 import {
@@ -35,6 +36,8 @@ export interface CreationInput {
   handedness: Handedness;
   homeCity: string;
   homeState: string;
+  /** Country id from `countries.ts`. Defaults to the United States. */
+  country?: string;
   schoolTier: SchoolTier;
   /** Optional: name your own high school. Falls back to the tier's default. */
   schoolName?: string;
@@ -77,6 +80,7 @@ export function createGame(
   const origin = rollOrigin(rng, {
     homeCity: input.homeCity,
     homeState: input.homeState,
+    country: input.country ?? DEFAULT_COUNTRY,
   });
 
   const genetics: Genetics = {
@@ -176,6 +180,7 @@ export function createGame(
     recruiting,
     events: { pending: null, flags: {}, fired: [], decisions: [] },
     money: origin.incomeTier === 'affluent' ? 1500 : origin.incomeTier === 'comfortable' ? 600 : 150,
+    milestones: [],
     stage: 'highschool',
     awaitingPath: false,
     college: null,
@@ -189,7 +194,9 @@ export function createGame(
         year: clock.year,
         month: clock.month,
         kind: 'system',
-        text: `${input.name} starts out in ${input.homeCity}, ${input.homeState}. ${school.middleSchoolName} now, ${school.name} next year.`,
+        text: isUSA(origin.country)
+          ? `${input.name} starts out in ${input.homeCity}, ${input.homeState}. ${school.middleSchoolName} now, ${school.name} next year.`
+          : `${input.name} starts out in ${input.homeCity}, ${countryById(origin.country).name}. ${school.middleSchoolName} now, ${school.name} next year. Almost nobody here is watching.`,
       },
     ],
   };

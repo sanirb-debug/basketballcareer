@@ -249,9 +249,32 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
   },
 };
 
+/**
+ * Energy is switched off for now.
+ *
+ * It was a real constraint — training drained it, low energy hurt production
+ * and raised the injury roll — but it made the month-to-month feel like
+ * bookkeeping rather than a life. The formulas are all still here and still
+ * tested, so turning this back on restores the whole system in one line.
+ *
+ * While it is off: nothing drains, the training penalty is neutral, the
+ * injury roll sees a rested player, and the UI does not mention it.
+ */
+export const ENERGY_ENABLED = false;
+
 export const TRAINING = {
   /** Attribute points a primary-weighted action yields at neutral conditions. */
-  BASE_GAIN: 3.4,
+  /**
+   * Tuned against the balance suite with `ENERGY_ENABLED` off.
+   *
+   * Energy used to hold development back roughly 30% over a career — a
+   * player grinding four actions a month spent far more than the monthly
+   * regen and trained at the low end of `energyTrainingFactor` most of the
+   * time. Removing that made 92% of dedicated careers reach the league
+   * against a 75% ceiling, so the base rate absorbs what energy used to take.
+   * Restore this to 3.4 if energy is ever switched back on.
+   */
+  BASE_GAIN: 2.15,
 
   /**
    * SPEC §3 diminishing returns: ×1.0, ×0.8, ×0.6, floor at ×0.5, reset after
@@ -391,7 +414,7 @@ export function applyActions(
 
   for (const id of chosen) {
     const def = ACTIONS[id];
-    const energyF = energyTrainingFactor(energy);
+    const energyF = ENERGY_ENABLED ? energyTrainingFactor(energy) : 1;
     const repeatIndex = repeatsThisMonth.get(id) ?? 0;
     const streak = (training.streaks[id] ?? 0) + repeatIndex;
     const dim = diminishingFor(streak);
@@ -425,11 +448,13 @@ export function applyActions(
     }
 
     trustDelta += def.trustDelta;
-    energy = clamp(
-      energy - def.energyCost,
-      TRAINING.ENERGY_MIN,
-      TRAINING.ENERGY_MAX,
-    );
+    if (ENERGY_ENABLED) {
+      energy = clamp(
+        energy - def.energyCost,
+        TRAINING.ENERGY_MIN,
+        TRAINING.ENERGY_MAX,
+      );
+    }
   }
 
   // Streaks advance for what was chosen and reset for everything else — the

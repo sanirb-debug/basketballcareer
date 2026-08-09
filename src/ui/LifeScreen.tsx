@@ -123,7 +123,7 @@ export default function LifeScreen(props: Props) {
   const points = view.actionPoints;
 
   return (
-    <div className="relative mx-auto flex h-[100dvh] max-w-[28rem] flex-col overflow-hidden bg-neutral-950">
+    <div className="relative mx-auto flex h-[100dvh] w-full max-w-[80rem] flex-col overflow-hidden bg-neutral-950 lg:border-x lg:border-neutral-800">
       {/* --- App bar ------------------------------------------------------ */}
       <header className="flex shrink-0 items-center justify-between bg-orange-600 px-4 py-2.5">
         <span className="text-lg font-black tracking-tight text-white">
@@ -161,6 +161,8 @@ export default function LifeScreen(props: Props) {
         </div>
       </div>
 
+      <div className="flex min-h-0 flex-1 lg:gap-0">
+      <div className="flex min-h-0 flex-1 flex-col lg:border-r lg:border-neutral-800">
       {/* --- The feed ----------------------------------------------------- */}
       {/*
         Chat layout: `justify-end` on a scrolling flex column pins short
@@ -251,8 +253,8 @@ export default function LifeScreen(props: Props) {
           onClick={() => setSheet('people')}
         />
         <NavButton
-          label="Ratings"
-          icon="📊"
+          label="Activities"
+          icon="🏋️"
           onClick={() => setSheet('activities')}
         />
       </nav>
@@ -260,7 +262,6 @@ export default function LifeScreen(props: Props) {
       {/* --- Meters ------------------------------------------------------- */}
       <div className="shrink-0 space-y-1 border-t border-neutral-800 bg-neutral-900 px-4 py-2.5">
         <Meter label="Overall" value={view.player.overall} tone="orange" />
-        <Meter label="Energy" value={view.energy} tone="emerald" />
         {view.nightlife.unlocked && (
           <Meter
             label="Focus"
@@ -271,11 +272,44 @@ export default function LifeScreen(props: Props) {
         <Meter label="Trust" value={view.coachTrust} tone="violet" />
         <Meter label="Fame" value={view.rankings.hype} tone="amber" />
       </div>
+      </div>
 
+      {/*
+        Desktop gets the sheets as a permanent second column instead of an
+        overlay: on a 1400px screen a phone-width app with 900px of empty
+        either side is the wrong answer, and the panels are the thing there
+        is room for.
+      */}
+      <aside className="hidden min-h-0 w-[26rem] shrink-0 flex-col lg:flex xl:w-[34rem]">
+        <div className="flex shrink-0 items-center gap-1 border-b border-neutral-800 bg-neutral-900 px-2">
+          {(['career', 'money', 'people', 'activities'] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setSheet(id)}
+              className={`-mb-px border-b-2 px-3 py-2.5 text-xs font-medium uppercase tracking-wide transition ${
+                (sheet ?? 'activities') === id
+                  ? 'border-orange-500 text-neutral-100'
+                  : 'border-transparent text-neutral-500 hover:text-neutral-300'
+              }`}
+            >
+              {sheetTitle(id)}
+            </button>
+          ))}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <SheetBody sheet={sheet ?? 'activities'} {...props} />
+        </div>
+      </aside>
+      </div>
+
+      {/* The overlay is the small-screen presentation only. */}
       {sheet && (
-        <SheetView title={sheetTitle(sheet)} onClose={() => setSheet(null)}>
-          <SheetBody sheet={sheet} {...props} />
-        </SheetView>
+        <div className="lg:hidden">
+          <SheetView title={sheetTitle(sheet)} onClose={() => setSheet(null)}>
+            <SheetBody sheet={sheet} {...props} />
+          </SheetView>
+        </div>
       )}
     </div>
   );
@@ -426,6 +460,7 @@ function SheetBody({ sheet, ...props }: Props & { sheet: Exclude<Sheet, null> })
           onTransferSchool={props.onTransferSchool}
           onReclassify={props.onReclassify}
         />
+        <AttributesPanel view={view} />
         <LifePanel view={view} />
         <CareerArchive view={view} exportText={props.exportText} />
       </div>
@@ -486,7 +521,6 @@ function SheetBody({ sheet, ...props }: Props & { sheet: Exclude<Sheet, null> })
       {view.nightlife.unlocked && (
         <NightlifePanel view={view} onGoOut={props.onGoOut} />
       )}
-      <AttributesPanel view={view} />
     </div>
   );
 }

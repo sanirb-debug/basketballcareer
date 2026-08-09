@@ -1,3 +1,4 @@
+import { exposureForCountry, isUSA } from './countries';
 import { clamp, type Rng } from './rng';
 import type { FamilyStructure, IncomeTier, Origin } from './types';
 
@@ -82,6 +83,7 @@ const MOTHER_SD = 2.8;
 export interface OriginInput {
   homeCity: string;
   homeState: string;
+  country: string;
 }
 
 export function rollOrigin(rng: Rng, input: OriginInput): Origin {
@@ -99,6 +101,11 @@ export function rollOrigin(rng: Rng, input: OriginInput): Origin {
     parentPlayed,
     fatherHeightInches,
     motherHeightInches,
-    exposureMultiplier: exposureForState(input.homeState),
+    country: input.country,
+    // Outside the United States the state means nothing and the country
+    // means everything.
+    exposureMultiplier: isUSA(input.country)
+      ? exposureForState(input.homeState)
+      : exposureForCountry(input.country),
   };
 }

@@ -1,4 +1,10 @@
-import { ACTIONS, TRAINING, diminishingFor, normalizeActions } from '../engine/actions';
+import {
+  ACTIONS,
+  ENERGY_ENABLED,
+  TRAINING,
+  diminishingFor,
+  normalizeActions,
+} from '../engine/actions';
 import { programById } from '../engine/colleges';
 import {
   ACTION_IDS,
@@ -14,6 +20,9 @@ interface Props {
   energy: number;
   onChange: (next: MonthAction[]) => void;
 }
+
+/** With energy off there is nothing to recover, so Rest has no job. */
+const HIDDEN_WHILE_NO_ENERGY = new Set(['rest']);
 
 const CATEGORY_ORDER = [
   'training',
@@ -115,7 +124,9 @@ export default function ActionPicker({
       <div className="mt-5 space-y-5">
         {CATEGORY_ORDER.map((category) => {
           const ids = ACTION_IDS.filter(
-            (id) => ACTIONS[id].category === category,
+            (id) =>
+              ACTIONS[id].category === category &&
+              (ENERGY_ENABLED || !HIDDEN_WHILE_NO_ENERGY.has(id)),
           );
           if (ids.length === 0) return null;
 
@@ -158,16 +169,18 @@ export default function ActionPicker({
                         </span>
                       </span>
                       <span className="shrink-0 text-right text-xs tabular-nums">
-                        <span
-                          className={
-                            def.energyCost < 0
-                              ? 'text-emerald-400'
-                              : 'text-neutral-500'
-                          }
-                        >
-                          {def.energyCost < 0 ? '+' : '−'}
-                          {Math.abs(def.energyCost)} nrg
-                        </span>
+                        {ENERGY_ENABLED && (
+                          <span
+                            className={
+                              def.energyCost < 0
+                                ? 'text-emerald-400'
+                                : 'text-neutral-500'
+                            }
+                          >
+                            {def.energyCost < 0 ? '+' : '−'}
+                            {Math.abs(def.energyCost)} nrg
+                          </span>
+                        )}
                         {stale && (
                           <span className="mt-0.5 block text-amber-500">
                             ×{multiplier.toFixed(1)}
@@ -183,13 +196,17 @@ export default function ActionPicker({
         })}
       </div>
 
-      <p className="mt-4 text-xs text-neutral-600">
-        Energy after this month:{' '}
-        <span className={projectedEnergy < 35 ? 'text-red-400' : 'text-neutral-400'}>
-          {Math.round(projectedEnergy)}
-        </span>
-        {projectedEnergy < 35 && ' — low energy sharply raises injury risk'}
-      </p>
+      {ENERGY_ENABLED && (
+        <p className="mt-4 text-xs text-neutral-600">
+          Energy after this month:{' '}
+          <span
+            className={projectedEnergy < 35 ? 'text-red-400' : 'text-neutral-400'}
+          >
+            {Math.round(projectedEnergy)}
+          </span>
+          {projectedEnergy < 35 && ' — low energy sharply raises injury risk'}
+        </p>
+      )}
     </section>
   );
 }

@@ -1,7 +1,7 @@
 import type { RngState } from './rng';
 
 /** Bump when the shape of `GameState` changes in a way old saves can't satisfy. */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export type Position = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 export const POSITIONS: readonly Position[] = ['PG', 'SG', 'SF', 'PF', 'C'];
@@ -122,6 +122,16 @@ export interface Genetics {
 
 export interface Origin {
   homeCity: string;
+  /**
+   * Where you are from (SPEC §4).
+   *
+   * The single biggest variable in how hard the climb is: it sets how much of
+   * what you do gets seen, and it decides whether reaching the league is a
+   * line in a local paper or the first time anyone from your country has ever
+   * done it.
+   */
+  country: string;
+  /** Only meaningful inside the United States. */
   homeState: string;
   incomeTier: IncomeTier;
   familyStructure: FamilyStructure;
@@ -876,6 +886,8 @@ export interface GameState {
   events: EventState;
   /** Dollars. Income from family and jobs; spent on camps and trainers. */
   money: number;
+  /** Milestones already reached, so a headline never fires twice. */
+  milestones: string[];
   /** Which stage of the career this is (SPEC §14). */
   stage: CareerStage;
   /**

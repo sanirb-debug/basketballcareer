@@ -23,7 +23,8 @@
     "verify:phase11": "vitest run src/verify/phase11.test.ts",
     "verify:phase12": "vitest run src/verify/phase12.test.ts",
     "verify:phase13": "vitest run src/verify/phase13.test.ts",
-    "verify:phase14": "vitest run src/verify/phase14.test.ts"
+    "verify:phase14": "vitest run src/verify/phase14.test.ts",
+    "verify:phase15": "vitest run src/verify/phase15.test.ts"
   },
   "dependencies": {
     "idb": "8.0.3",

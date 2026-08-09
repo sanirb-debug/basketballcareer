@@ -8,6 +8,7 @@ import {
 import { createRng, seedToState } from '../engine/rng';
 import { initialPeople } from '../engine/people';
 import { initialNightlife } from '../engine/nightlife';
+import { DEFAULT_COUNTRY } from '../engine/countries';
 
 /**
  * IndexedDB persistence (SPEC §16.1) — in place from the first commit, because
@@ -128,6 +129,19 @@ const STEPS: Record<number, Step> = {
       const romance: RomanceStage = person.exclusive ? 'exclusive' : 'dating';
       return { ...person, role: 'partner' as PersonRole, romance };
     }),
+  }),
+
+  /**
+   * v8 → v9: nationality, and the milestone ledger that hangs off it.
+   *
+   * Every existing career was played as an American, so that is what they
+   * become — anything else would rewrite a run's history.
+   */
+  8: (state) => ({
+    ...state,
+    schemaVersion: 9,
+    origin: { ...state.origin, country: DEFAULT_COUNTRY },
+    milestones: [],
   }),
 };
 

@@ -1,5 +1,6 @@
 import type { PublicView } from '../engine/selectors';
 import type { NightId } from '../engine/nightlife';
+import { ENERGY_ENABLED } from '../engine/actions';
 
 /**
  * The off-court panel (SPEC §6).
@@ -123,13 +124,17 @@ export default function NightlifePanel({ view, onGoOut }: Props) {
                   {def.detail}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums">
-                  <span
-                    className={
-                      def.energy > 0 ? 'text-neutral-500' : 'text-emerald-500/80'
-                    }
-                  >
-                    {def.energy > 0 ? `−${def.energy}` : `+${-def.energy}`} nrg
-                  </span>
+                  {ENERGY_ENABLED && (
+                    <span
+                      className={
+                        def.energy > 0
+                          ? 'text-neutral-500'
+                          : 'text-emerald-500/80'
+                      }
+                    >
+                      {def.energy > 0 ? `−${def.energy}` : `+${-def.energy}`} nrg
+                    </span>
+                  )}
                   <span
                     className={
                       def.distraction > 0

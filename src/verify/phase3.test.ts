@@ -6,8 +6,10 @@ import { autoTick } from './harness';
 import { phaseFor } from '../engine/calendar';
 import {
   ACTIONS,
+  ENERGY_ENABLED,
   TRAINING,
   diminishingFor,
+  energyTrainingFactor,
   initialTrainingState,
   skillCeiling,
 } from '../engine/actions';
@@ -191,12 +193,26 @@ describe('diminishing returns (SPEC §3)', () => {
 });
 
 describe('energy (SPEC §6)', () => {
-  test('training drains it and rest restores it', () => {
+  /*
+   * Energy is switched off (`ENERGY_ENABLED`). The system is intact and still
+   * asserted at the formula level below, because the flag exists to be turned
+   * back on — but the career-level behaviour it used to drive is genuinely
+   * gone, and a test that pretended otherwise would be lying.
+   */
+  test('the formulas still behave, so the flag can be flipped back', () => {
+    expect(energyTrainingFactor(100)).toBeGreaterThan(energyTrainingFactor(20));
+    expect(energyTrainingFactor(100)).toBeCloseTo(1, 5);
+    expect(energyTrainingFactor(0)).toBeGreaterThan(0);
+    expect(injuryProbability(20, 40, 0)).toBeGreaterThan(
+      injuryProbability(100, 40, 0),
+    );
+  });
+
+  test('nothing drains while it is switched off', () => {
+    expect(ENERGY_ENABLED).toBe(false);
     const base = createGame(3, INPUT);
     const trained = tick(base, ['lift', 'lift', 'lift', 'lift']);
-    const rested = tick(base, ['rest']);
-    expect(trained.condition.energy).toBeLessThan(base.condition.energy);
-    expect(rested.condition.energy).toBeGreaterThan(trained.condition.energy);
+    expect(trained.condition.energy).toBe(base.condition.energy);
   });
 
   test('stays inside 0–100 across a punishing career', () => {
@@ -244,26 +260,20 @@ describe('injuries (SPEC §6)', () => {
     expect(baseline).toBeGreaterThanOrEqual(INJURY.BASE);
   });
 
-  test('zero rest raises the injury rate measurably', () => {
-    let withRest = 0;
-    let withoutRest = 0;
+  test('minutes played still drive the injury rate', () => {
+    // Rest used to be the lever here. With energy off, the load term is what
+    // is left — and it has to keep working, or injuries stop meaning
+    // anything at all.
+    const light = injuryProbability(100, 40, 20);
+    const heavy = injuryProbability(100, 40, 320);
+    expect(heavy).toBeGreaterThan(light * 1.1);
 
-    // A larger sample than the other assertions: this is a rate comparison
-    // between two whole careers, and 60 runs sat inside the noise band.
-    for (let seed = 1; seed <= 140; seed++) {
-      withRest += injuryCount(runCareer(seed, rotatePolicy));
-      withoutRest += injuryCount(
-        runCareer(seed, (s) => {
-          let i = s.monthsElapsed * 3;
-          return Array.from(
-            { length: budget(s) },
-            () => ROTATION[i++ % ROTATION.length] as ActionId,
-          );
-        }),
-      );
+    // And injuries still actually happen across a run.
+    let total = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      total += injuryCount(runCareer(seed, rotatePolicy));
     }
-
-    expect(withoutRest).toBeGreaterThan(withRest * 1.1);
+    expect(total).toBeGreaterThan(0);
   });
 
   test('an injury caps attributes while it heals and lifts cleanly after', () => {

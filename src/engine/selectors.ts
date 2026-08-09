@@ -34,6 +34,7 @@ import {
 } from './decisions';
 import { SCHOOLS, SCHOOL_TIERS, isMiddleSchool } from './school';
 import { toFirstPerson } from './voice';
+import { countryById, isUSA } from './countries';
 import {
   PARTIES,
   describeDistraction,
@@ -253,6 +254,18 @@ export interface PublicView {
     exposure: number;
   };
   origin: PublicOrigin;
+  /** Where you are from, and what that makes each milestone worth. */
+  nationality: {
+    id: string;
+    name: string;
+    demonym: string;
+    flag: string;
+    isUSA: boolean;
+    /** How many players born here have ever reached the league. */
+    nbaPlayersEver: number;
+    /** Milestones already reached, newest last. */
+    milestones: string[];
+  };
   season: SeasonView | null;
   gamesThisMonth: GameRecord[];
   history: SeasonSummary[];
@@ -332,6 +345,7 @@ export function toPublicView(state: GameState): PublicView {
   const grade = gradeForClock(clock);
   const months = ageInMonths(clock, player.birthYear, player.birthMonth);
   const monthAbs = absoluteMonth(clock.year, clock.month);
+  const nationality = countryById(state.origin.country);
 
   // Destructured out rather than deleted, so adding a hidden field later
   // cannot accidentally start leaking through this selector.
@@ -382,6 +396,15 @@ export function toPublicView(state: GameState): PublicView {
       exposure: state.school.exposureMultiplier,
     },
     origin: publicOrigin,
+    nationality: {
+      id: nationality.id,
+      name: nationality.name,
+      demonym: nationality.demonym,
+      flag: nationality.flag,
+      isUSA: isUSA(state.origin.country),
+      nbaPlayersEver: nationality.nbaPlayersEver,
+      milestones: state.milestones,
+    },
     season: state.season ? toSeasonView(state) : null,
     // The clock advances at the end of a tick, so the games worth showing are
     // the ones from the month just completed, not the month now on screen.
