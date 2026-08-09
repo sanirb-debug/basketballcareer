@@ -99,14 +99,24 @@ function titleFor(view: PublicView): string {
   return view.stageLabel;
 }
 
+/**
+ * Colour carries meaning in the feed, and only where it earns it.
+ *
+ * Most lines are plain — if everything is coloured then nothing is. Games,
+ * growth and money-adjacent news get a tint; a decision is set apart because
+ * it is the one line the player wrote themselves; and milestones and injuries
+ * are pulled out into cards entirely, because those are the moments you want
+ * to see when you scroll back through a career.
+ */
 const KIND_TONE: Record<string, string> = {
-  game: 'text-sky-700 dark:text-sky-300',
-  growth: 'text-emerald-700 dark:text-emerald-300',
-  injury: 'text-red-700 dark:text-red-300',
-  recruiting: 'text-violet-700 dark:text-violet-300',
-  hype: 'text-amber-700 dark:text-amber-300',
-  life: 'text-rose-700 dark:text-rose-300',
-  academics: 'text-teal-700 dark:text-teal-300',
+  game: 'text-sky-300',
+  growth: 'text-emerald-300',
+  recruiting: 'text-violet-300',
+  academics: 'text-teal-300/90',
+  life: 'text-neutral-400',
+  training: 'text-neutral-400',
+  decision: 'font-medium text-neutral-100',
+  system: 'text-neutral-300',
 };
 
 export default function LifeScreen(props: Props) {
@@ -139,42 +149,43 @@ export default function LifeScreen(props: Props) {
 
   return (
     <div className="relative mx-auto flex h-[100dvh] w-full max-w-[96rem] flex-col overflow-hidden bg-neutral-950 lg:border-x lg:border-neutral-800">
-      {/* --- App bar ------------------------------------------------------ */}
-      <header className="flex shrink-0 items-center justify-between bg-orange-600 px-4 py-2.5">
-        <span className="text-lg font-black tracking-tight text-white">
-          HOOP<span className="text-orange-200">LIFE</span>
-        </span>
-        <button
-          type="button"
-          onClick={onExit}
-          className="rounded px-2 py-1 text-xs font-medium text-orange-100 transition hover:bg-orange-700"
-        >
-          Save &amp; exit
-        </button>
-      </header>
+      {/* --- Header ------------------------------------------------------- */}
+      <header className="shrink-0 bg-gradient-to-b from-orange-600 to-orange-700">
+        <div className="flex items-center justify-between px-5 pb-1 pt-3">
+          <span className="text-[17px] font-black tracking-tight text-white">
+            HOOP<span className="text-orange-200/90">LIFE</span>
+          </span>
+          <button
+            type="button"
+            onClick={onExit}
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-orange-100/90 transition hover:bg-white/10"
+          >
+            Save &amp; exit
+          </button>
+        </div>
 
-      {/* --- Identity ----------------------------------------------------- */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-neutral-800 bg-neutral-900 px-4 py-2.5">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-600 text-lg">
-          🏀
+        <div className="flex items-end gap-3.5 px-5 pb-4 pt-2">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-2xl shadow-inner">
+            {view.nationality.flag}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[19px] font-semibold leading-tight text-white">
+              {view.player.name}
+            </div>
+            <div className="truncate text-[13px] leading-tight text-orange-100/80">
+              {titleFor(view)}
+            </div>
+          </div>
+          <div className="shrink-0 text-right">
+            <div className="text-[17px] font-semibold leading-tight tabular-nums text-white">
+              ${view.money.toLocaleString()}
+            </div>
+            <div className="text-[11px] font-medium uppercase leading-tight tracking-wider text-orange-100/70">
+              {view.date}
+            </div>
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-base font-semibold text-neutral-50">
-            {view.player.name}
-          </div>
-          <div className="truncate text-xs text-neutral-400">
-            {titleFor(view)}
-          </div>
-        </div>
-        <div className="shrink-0 text-right">
-          <div className="text-sm font-semibold tabular-nums text-emerald-400">
-            ${view.money.toLocaleString()}
-          </div>
-          <div className="text-[10px] uppercase tracking-widest text-neutral-500">
-            {view.date}
-          </div>
-        </div>
-      </div>
+      </header>
 
       <div className="flex min-h-0 flex-1 lg:gap-0">
       <div className="flex min-h-0 flex-1 flex-col lg:border-r lg:border-neutral-800">
@@ -185,36 +196,50 @@ export default function LifeScreen(props: Props) {
         just above the button rather than stranded at the top of an empty
         screen. Long careers scroll normally.
       */}
-      <div className="flex flex-1 flex-col justify-end overflow-y-auto bg-neutral-950 px-4 py-4">
+      <div className="flex flex-1 flex-col justify-end overflow-y-auto px-5 py-6">
         {view.feed.length === 0 && (
           <p className="text-sm text-neutral-500">
             Nothing has happened yet. Play the month.
           </p>
         )}
         {/*
-          The shell grows to fill a desktop, but prose does not get more
-          readable past about 70 characters — so the feed column caps its own
-          line length and centres inside whatever room it is given.
+          A timeline rather than a list: a hairline rail down the left with a
+          date marker on it, so a career reads as one continuous thing you
+          scroll rather than a stack of disconnected blocks. Line length is
+          capped independently of the shell — prose stops getting more
+          readable somewhere around seventy characters.
         */}
         {view.feed.map((block) => (
           <section
             key={block.monthsElapsed}
-            className="mx-auto mb-5 w-full max-w-[42rem] shrink-0"
+            className="relative mx-auto w-full max-w-[44rem] shrink-0 border-l border-neutral-800/70 pb-7 pl-6"
           >
-            <h2 className="mb-1 text-sm font-bold text-orange-500">
+            <span className="absolute -left-[4.5px] top-[7px] h-2 w-2 rounded-full bg-orange-500 ring-4 ring-neutral-950" />
+            <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-[0.14em] text-orange-400/90">
               {block.date}
             </h2>
-            <ul className="space-y-0.5">
-              {block.lines.map((line, i) => (
-                <li
-                  key={i}
-                  className={`text-[15px] leading-snug ${
-                    KIND_TONE[line.kind] ?? 'text-neutral-300'
-                  }`}
-                >
-                  {line.text}
-                </li>
-              ))}
+            <ul className="space-y-1.5">
+              {block.lines.map((line, i) => {
+                const headline = line.kind === 'hype' || line.kind === 'injury';
+                return (
+                  <li
+                    key={i}
+                    className={
+                      headline
+                        ? `rounded-lg border px-4 py-3 text-[15px] font-medium leading-snug ${
+                            line.kind === 'injury'
+                              ? 'border-red-900/70 bg-red-950/30 text-red-200'
+                              : 'border-amber-800/60 bg-amber-950/25 text-amber-100'
+                          }`
+                        : `text-[15px] leading-relaxed ${
+                            KIND_TONE[line.kind] ?? 'text-neutral-300'
+                          }`
+                    }
+                  >
+                    {line.text}
+                  </li>
+                );
+              })}
             </ul>
           </section>
         ))}
@@ -286,17 +311,19 @@ export default function LifeScreen(props: Props) {
       </nav>
 
       {/* --- Meters ------------------------------------------------------- */}
-      <div className="shrink-0 space-y-1 border-t border-neutral-800 bg-neutral-900 px-4 py-2.5">
+      <div className="grid shrink-0 grid-cols-4 gap-px border-t border-neutral-800 bg-neutral-800">
         <Meter label="Overall" value={view.player.overall} tone="orange" />
-        {view.nightlife.unlocked && (
+        <Meter label="Trust" value={view.coachTrust} tone="violet" />
+        <Meter label="Fame" value={view.rankings.hype} tone="amber" />
+        {view.nightlife.unlocked ? (
           <Meter
             label="Focus"
             value={100 - view.nightlife.distraction}
             tone="sky"
           />
+        ) : (
+          <Meter label="Grades" value={view.academics.gpa * 25} tone="emerald" display={view.academics.gpa.toFixed(2)} />
         )}
-        <Meter label="Trust" value={view.coachTrust} tone="violet" />
-        <Meter label="Fame" value={view.rankings.hype} tone="amber" />
       </div>
       </div>
 
@@ -381,29 +408,41 @@ const TONE: Record<string, string> = {
   amber: 'bg-amber-500',
 };
 
+/**
+ * One meter.
+ *
+ * Rendered as a tile with the number large enough to read at a glance rather
+ * than a hairline bar with a 10px label beside it — these are the four
+ * numbers that decide the career, and they were the smallest thing on the
+ * screen.
+ */
 function Meter({
   label,
   value,
   tone,
+  display,
 }: {
   label: string;
   value: number;
   tone: string;
+  display?: string;
 }) {
   const pct = Math.max(0, Math.min(100, Math.round(value)));
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-14 shrink-0 text-[11px] font-medium text-neutral-400">
-        {label}
-      </span>
-      <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-neutral-800">
+    <div className="bg-neutral-950 px-3 py-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
+          {label}
+        </span>
+        <span className="text-base font-semibold tabular-nums text-neutral-100">
+          {display ?? pct}
+        </span>
+      </div>
+      <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-neutral-800">
         <span
-          className={`block h-full rounded-full ${TONE[tone]}`}
+          className={`block h-full rounded-full ${TONE[tone]} transition-[width] duration-500`}
           style={{ width: `${pct}%` }}
         />
-      </span>
-      <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-neutral-400">
-        {pct}
       </span>
     </div>
   );

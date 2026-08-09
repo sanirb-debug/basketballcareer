@@ -257,8 +257,24 @@ function applyEffects(
       }
     : state.condition.injury;
 
+  /*
+   * The feed records the decision, not just the consequence.
+   *
+   * An outcome on its own — "I walked over and shook his hand. He remembered."
+   * — is meaningless a month later, because the prompt that gave it meaning
+   * was in a modal the player dismissed. Leading with the event's own title
+   * turns the feed into a record of what happened *and* what was chosen,
+   * which is the whole point of keeping one.
+   */
   const log: LogEntry[] = [
     ...state.log,
+    {
+      monthsElapsed,
+      year: state.clock.year,
+      month: state.clock.month,
+      kind: 'decision',
+      text: `${event.title} — ${choice.label}.`,
+    },
     {
       monthsElapsed,
       year: state.clock.year,

@@ -93,7 +93,6 @@ import type {
  *    what they just did and what everyone else did.
  */
 
-const GROWTH_NOTIFICATION_THRESHOLD = 0.05;
 const ENERGY_PER_MINUTE = 0.16;
 
 /** Monthly household support by income tier. */
@@ -473,8 +472,20 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
   // still consumes its draw, keeping the stream aligned at every age.
   const growth = growOneMonth(state.player.body, ageNext, state.hidden.genetics, rng);
   const grew = Math.round(growth.grewInches * 10) / 10;
-  if (grew >= GROWTH_NOTIFICATION_THRESHOLD) {
-    note('growth', `You grew ${grew.toFixed(1)} ${grew === 1 ? 'inch' : 'inches'}.`);
+  /*
+   * Growth is reported when you *cross* something, not every month.
+   *
+   * "I grew 0.1 inches" fired roughly 70 times across a career and was the
+   * single most repeated line in the game — it taught the player that the
+   * feed is mostly noise. What a fourteen-year-old actually notices is the
+   * number changing: passing six foot, or a spurt that puts three inches on
+   * him in a season. So this fires on whole-inch crossings, and says
+   * something different when the inch is a foot.
+   */
+  const beforeInches = state.player.body.heightInches;
+  const afterInches = growth.body.heightInches;
+  if (Math.floor(afterInches) > Math.floor(beforeInches)) {
+    note('growth', heightNote(afterInches, grew));
   }
 
   // --- 15. Derived attributes -------------------------------------------
@@ -896,6 +907,8 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
   let playoffWins = season.playoffWins;
 
   const resolved = new Map<string, GameRecord>();
+  // The night worth telling somebody about.
+  let best: { points: number; opponent: string } | null = null;
 
   for (const game of scheduled) {
     if (game.playoff && eliminated) {
@@ -942,6 +955,9 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
     if (minutes > 0) {
       minutesLoad += minutes;
       points += outcome.box.points;
+      if (!best || outcome.box.points > best.points) {
+        best = { points: outcome.box.points, opponent: game.opponent };
+      }
       opponentTotal += game.opponentStrength;
       gamesPlayed++;
       if (ENERGY_ENABLED) {
@@ -974,7 +990,7 @@ function playMonth(rng: Rng, state: GameState, ctx: PlayContext): PlayResult {
   if (gamesPlayed > 0) {
     ctx.note(
       'game',
-      `We went ${wins}-${losses} this month. I averaged ${(points / gamesPlayed).toFixed(1)} a night.`,
+      monthSummary(wins, losses, points / gamesPlayed, best, ctx.clock.month),
     );
   } else if (scheduled.length > 0) {
     ctx.note('game', `I watched all ${scheduled.length} from the bench.`);
@@ -1150,4 +1166,64 @@ function trainingNote(label: string, monthsElapsed: number): string {
     `The ${label} finally feels like mine.`,
   ];
   return lines[monthsElapsed % lines.length] as string;
+}
+
+
+/**
+ * Crossing a whole inch, which is the only growth worth a line.
+ *
+ * A foot boundary gets its own sentence because that is the one people
+ * actually remember about their own body.
+ */
+function heightNote(inches: number, grewThisMonth: number): string {
+  const whole = Math.floor(inches);
+  const feet = Math.floor(whole / 12);
+  const rest = whole % 12;
+  const label = `${feet}'${rest}"`;
+
+  if (rest === 0) {
+    return `I am ${feet} foot now. I measured twice.`;
+  }
+  if (grewThisMonth >= 0.5) {
+    return `I have shot up. ${label}, and nothing in my wardrobe fits.`;
+  }
+  return `I am ${label} now.`;
+}
+
+/**
+ * The month's basketball, said differently each time.
+ *
+ * The old line — "We went 2-4 this month. I averaged 5.5 a night." — appeared
+ * in every in-season month of every year, about seventy times a career. It
+ * carried the right information in the most forgettable possible way. This
+ * keeps the numbers and leads with the thing worth leading with: a night that
+ * stood out, a run of wins, or a month that got away.
+ */
+function monthSummary(
+  wins: number,
+  losses: number,
+  ppg: number,
+  best: { points: number; opponent: string } | null,
+  month: number,
+): string {
+  const record = `${wins}-${losses}`;
+  const avg = ppg.toFixed(1);
+
+  // A genuinely big night leads, because that is what you would tell somebody.
+  if (best && best.points >= Math.max(20, ppg * 1.9)) {
+    return `I had ${best.points} against ${best.opponent}. We went ${record} on the month, ${avg} a night for me.`;
+  }
+
+  const swept = losses === 0 && wins > 1;
+  const rough = wins === 0 && losses > 1;
+  if (swept) return `We did not lose in ${month === 11 ? 'December' : 'the month'} — ${record}, and ${avg} a night for me.`;
+  if (rough) return `${record}. Nothing worked, and my ${avg} a night did not help.`;
+
+  const variants = [
+    `${record} on the month. ${avg} a night for me.`,
+    `We finished the month ${record}. I averaged ${avg}.`,
+    `${avg} a night, and the team went ${record}.`,
+    `A ${record} month. I was good for ${avg}.`,
+  ];
+  return variants[month % variants.length] as string;
 }

@@ -471,13 +471,49 @@ describe('the genetic roll stays hidden (SPEC §4)', () => {
     expect(JSON.stringify(state)).toContain('heightCeiling');
   });
 
-  test('the growth notification reveals inches, never the ceiling', () => {
+  test('the growth notification never leaks the ceiling', () => {
+    // The invariant is about secrecy, not phrasing: a player may be told how
+    // tall he is — he can see that — but never how tall he will end up.
     const { state } = playUntilAge(createGame(21, INPUT), 190);
     const growthLines = state.log.filter((e) => e.kind === 'growth');
     expect(growthLines.length).toBeGreaterThan(0);
+
+    const ceiling = state.hidden.genetics.heightCeiling;
+    const ceilingWhole = Math.floor(ceiling);
+    const reachedCeiling =
+      Math.floor(state.player.body.heightInches) >= ceilingWhole;
+
     for (const line of growthLines) {
-      expect(line.text).toMatch(/^You grew \d+\.\d inch(es)?\.$/);
+      // Nothing in the feed states a height the player has not reached.
+      const quoted = line.text.match(/(\d+)'(\d+)"/);
+      if (quoted) {
+        const inches = Number(quoted[1]) * 12 + Number(quoted[2]);
+        expect(inches).toBeLessThanOrEqual(
+          Math.floor(state.player.body.heightInches),
+        );
+        if (!reachedCeiling) expect(inches).toBeLessThan(ceilingWhole);
+      }
+      expect(line.text).not.toContain('ceiling');
+      expect(line.text).not.toContain('potential');
     }
+  });
+
+  test('growth is reported on crossings, not every single month', () => {
+    // "I grew 0.1 inches" fired ~70 times a career and buried everything
+    // else in the feed.
+    const { state } = playUntilAge(createGame(21, INPUT), 190);
+    const growthLines = state.log.filter((e) => e.kind === 'growth');
+    const monthsLived = state.monthsElapsed;
+
+    expect(growthLines.length).toBeGreaterThan(2);
+    expect(growthLines.length).toBeLessThan(monthsLived / 3);
+
+    // One line per whole inch gained, at most.
+    const inchesGained =
+      state.player.body.heightInches -
+      Math.floor(state.player.body.heightInches) +
+      growthLines.length;
+    expect(growthLines.length).toBeLessThanOrEqual(Math.ceil(inchesGained) + 1);
   });
 });
 

@@ -819,7 +819,8 @@ export type LogKind =
   | 'academics'
   | 'hype'
   | 'recruiting'
-  | 'life';
+  | 'life'
+  | 'decision';
 
 export interface LogEntry {
   monthsElapsed: number;
