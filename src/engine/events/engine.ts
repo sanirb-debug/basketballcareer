@@ -113,8 +113,40 @@ export function matchesConditions(
   return true;
 }
 
+/**
+ * How long before a repeatable event may come round again.
+ *
+ * Only 23 of the 128 events are one-shot, which is right — a teammate asking
+ * you to cover for him is a thing that happens more than once in a career.
+ * What is not right is the *same sentence* twice in three months, which is
+ * what an unbounded pool produces and what makes a feed look broken. Two
+ * years is long enough that a repeat reads as history rhyming.
+ */
+export const EVENT_COOLDOWN_MONTHS = 24;
+
 export function eligibleEvents(state: GameState): GameEvent[] {
   const fired = new Set(state.events.fired);
+
+  // Derived from the decision log rather than a new field, so this needs no
+  // schema change and works on every existing save.
+  const recent = new Set(
+    state.events.decisions
+      .filter(
+        (d) => state.monthsElapsed - d.monthsElapsed < EVENT_COOLDOWN_MONTHS,
+      )
+      .map((d) => d.eventId),
+  );
+
+  const pool = EVENTS.filter(
+    (event) =>
+      !(event.once && fired.has(event.id)) &&
+      !recent.has(event.id) &&
+      matchesConditions(event, state),
+  );
+
+  // If the cooldown has starved the pool, fall back to ignoring it rather
+  // than silently going quiet for two years.
+  if (pool.length > 0) return pool;
   return EVENTS.filter(
     (event) =>
       !(event.once && fired.has(event.id)) && matchesConditions(event, state),

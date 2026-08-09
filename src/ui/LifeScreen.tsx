@@ -8,6 +8,8 @@ import type {
   SocialPlatformId,
   TrainingState,
 } from '../engine/types';
+import { ACTIONS } from '../engine/actions';
+import type { ActionId } from '../engine/types';
 import type { InteractionId } from '../engine/people';
 import type { PostKind } from '../engine/activities';
 import type { NightId, PartyId } from '../engine/nightlife';
@@ -122,6 +124,19 @@ export default function LifeScreen(props: Props) {
   const spent = chosen.length;
   const points = view.actionPoints;
 
+  // What the month is committed to, collapsed into "Shooting ×4 · Film ×2"
+  // so the strip reads as a plan rather than a progress bar.
+  const plan = (() => {
+    const counts = new Map<string, number>();
+    for (const action of chosen) {
+      const id = typeof action === 'string' ? action : action.id;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return [...counts.entries()].map(([id, n]) =>
+      n > 1 ? `${ACTIONS[id as ActionId].label} ×${n}` : ACTIONS[id as ActionId].label,
+    );
+  })();
+
   return (
     <div className="relative mx-auto flex h-[100dvh] w-full max-w-[96rem] flex-col overflow-hidden bg-neutral-950 lg:border-x lg:border-neutral-800">
       {/* --- App bar ------------------------------------------------------ */}
@@ -207,31 +222,34 @@ export default function LifeScreen(props: Props) {
       </div>
 
       {/* --- What this month is committed to ------------------------------ */}
-      <div className="shrink-0 border-t border-neutral-800 bg-neutral-900 px-4 py-2">
-        <button
-          type="button"
-          onClick={() => setSheet('activities')}
-          className="flex w-full items-center justify-between gap-3 text-left"
-        >
-          <span className="flex items-center gap-1.5">
-            {Array.from({ length: points }).map((_, i) => (
-              <span
-                key={i}
-                className={`h-2 w-6 rounded-full ${
-                  i < spent ? 'bg-orange-500' : 'bg-neutral-700'
-                }`}
-              />
-            ))}
-          </span>
-          <span className="text-xs text-neutral-400">
-            {view.phase} · {spent} of {points} planned
-            <span className="ml-2 text-orange-400">Plan →</span>
-          </span>
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setSheet('activities')}
+        className="flex shrink-0 items-center gap-3 border-t border-neutral-800 bg-neutral-900 px-4 py-2.5 text-left transition hover:bg-neutral-800/70"
+      >
+        <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          {view.phase}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm">
+          {plan.length === 0 ? (
+            <span className="text-neutral-500">Nothing planned this month</span>
+          ) : (
+            <span className="text-neutral-200">{plan.join(' · ')}</span>
+          )}
+        </span>
+        <span className="shrink-0 text-xs font-medium text-orange-400">
+          {spent}/{points} · Plan →
+        </span>
+      </button>
 
       {/* --- Bottom nav --------------------------------------------------- */}
-      <nav className="relative flex shrink-0 items-stretch border-t border-neutral-800 bg-neutral-900">
+      {/*
+        On desktop the side column already carries these four, so the row
+        collapses to just the button that moves time — two identical navs a
+        few hundred pixels apart was the main thing making the screen feel
+        cluttered.
+      */}
+      <nav className="relative flex shrink-0 items-stretch justify-center border-t border-neutral-800 bg-neutral-900">
         <NavButton
           label="Career"
           icon="💼"
@@ -239,18 +257,18 @@ export default function LifeScreen(props: Props) {
         />
         <NavButton label="Money" icon="💰" onClick={() => setSheet('money')} />
 
-        <div className="relative w-24 shrink-0">
+        <div className="relative w-24 shrink-0 lg:flex lg:w-auto lg:items-center lg:py-2">
           <button
             type="button"
             onClick={onNextMonth}
             disabled={saving || blocked}
-            className="absolute -top-5 left-1/2 flex h-[4.5rem] w-[4.5rem] -translate-x-1/2 flex-col items-center justify-center rounded-full border-4 border-neutral-900 bg-orange-600 shadow-lg transition hover:bg-orange-500 disabled:bg-neutral-700 disabled:text-neutral-500"
+            className="absolute -top-5 left-1/2 flex h-[4.5rem] w-[4.5rem] -translate-x-1/2 flex-col items-center justify-center rounded-full border-4 border-neutral-900 bg-orange-600 shadow-lg transition hover:bg-orange-500 disabled:bg-neutral-700 disabled:text-neutral-500 lg:static lg:h-12 lg:w-auto lg:translate-x-0 lg:flex-row lg:gap-2 lg:border-0 lg:px-10"
           >
-            <span className="text-2xl font-black leading-none text-white">
+            <span className="text-2xl font-black leading-none text-white lg:text-xl">
               +
             </span>
-            <span className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
-              {saving ? '…' : 'Month'}
+            <span className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-white lg:mt-0 lg:text-sm">
+              {saving ? 'Saving…' : 'Play the month'}
             </span>
           </button>
         </div>
@@ -345,7 +363,7 @@ function NavButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 transition hover:bg-neutral-800"
+      className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 transition hover:bg-neutral-800 lg:hidden"
     >
       <span className="text-lg leading-none">{icon}</span>
       <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">

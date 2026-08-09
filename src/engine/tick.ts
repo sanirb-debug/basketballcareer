@@ -194,9 +194,23 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     COACH_TRUST.MAX,
   );
 
+  /*
+   * The training notice, but not every single month.
+   *
+   * Firing on any gain meant "The work is showing. My catch-and-shoot three
+   * is coming along." three months running, which reads like a bug and
+   * teaches the player to skim the feed. It now needs a real month's work and
+   * a break since the last time the same skill was mentioned.
+   */
   const topGain = applied.gained[0];
-  if (topGain && topGain.amount >= 0.2) {
-    note('training', `The work is showing. My ${labelFor(topGain.key)} is coming along.`);
+  if (topGain && topGain.amount >= 0.35) {
+    const label = labelFor(topGain.key);
+    const mentionedRecently = state.log
+      .slice(-24)
+      .some((e) => e.kind === 'training' && e.text.includes(label));
+    if (!mentionedRecently) {
+      note('training', trainingNote(label, monthsElapsed));
+    }
   }
 
   // --- 2. Academics (SPEC §9) -------------------------------------------
@@ -1118,4 +1132,22 @@ function deliverBabies(
   });
 
   return { people: [...people, ...children], distractionDelta };
+}
+
+
+/**
+ * Something different to say about the same progress.
+ *
+ * Rotated by month rather than at random so it is deterministic and costs no
+ * draw from the run's stream.
+ */
+function trainingNote(label: string, monthsElapsed: number): string {
+  const lines = [
+    `The work is showing. My ${label} is coming along.`,
+    `Somebody noticed my ${label} has improved. I had noticed too.`,
+    `My ${label} is not what it was six months ago.`,
+    `Whatever I have been doing to my ${label}, it is working.`,
+    `The ${label} finally feels like mine.`,
+  ];
+  return lines[monthsElapsed % lines.length] as string;
 }

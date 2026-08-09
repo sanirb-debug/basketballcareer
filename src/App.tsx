@@ -137,7 +137,21 @@ export default function App() {
     if (!state || saving) return;
     try {
       const next = tick(state, chosen);
-      setChosen([]);
+
+      /*
+       * The plan carries into next month.
+       *
+       * With ten slots, clearing it every tick would mean planning ten things
+       * 264 times to play one career — the single most tedious thing the game
+       * could ask for. Carrying it forward makes the default "same as last
+       * month", which is what a real routine is, and leaves changing it as
+       * the deliberate act.
+       *
+       * Targeted actions are dropped: a campus visit is to one program on one
+       * occasion, and silently repeating it every month would spend the
+       * player's month on something they did not ask for.
+       */
+      setChosen(chosen.filter((a) => typeof a === 'string'));
       await commitState(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

@@ -105,7 +105,28 @@ const PRO_PHASES: readonly PhaseInfo[] = [
  * (SPEC §3, §14). A July in high school is the live period; a July in the
  * league is free agency; a July in college is summer workouts.
  */
+/**
+ * How many things you can do with a month.
+ *
+ * Flat, everywhere. The original design rationed this by season — two in
+ * season, four in the offseason — as the game's central scarcity, and it was
+ * a scarcity that did not survive contact with the fiction: a real player in
+ * February lifts, shoots, watches film, studies, sees his family and goes to
+ * practice, all in the same month. Two was a number, not a life.
+ *
+ * What replaces the cap as the limiter is the diminishing-returns curve that
+ * was always there: repeats inside a month walk it, so ten shooting sessions
+ * are worth nowhere near ten times one. Breadth is now rewarded and grinding
+ * one thing is not, which is the behaviour SPEC §3 actually wanted.
+ */
+export const ACTION_POINTS_PER_MONTH = 10;
+
 export function phaseFor(clock: Clock, stage: CareerStage = 'highschool'): PhaseInfo {
+  return { ...rawPhaseFor(clock, stage), actionPoints: ACTION_POINTS_PER_MONTH };
+}
+
+/** The phase's own label and season, before the budget is flattened. */
+function rawPhaseFor(clock: Clock, stage: CareerStage): PhaseInfo {
   switch (stage) {
     case 'nba':
       return PRO_PHASES[clock.month] as PhaseInfo;

@@ -76,7 +76,11 @@ export const MIDDLE_SCHOOL_TEAM = {
 export function middleSchoolNameFor(city: string, country?: string): string {
   const town = city.trim() || 'Town';
   if (!country || isUSA(country)) return `${town} Middle School`;
-  return `${town} Secondary School`;
+  // Distinct from the `public` high-school name below, which is
+  // "{town} Secondary School" — naming both the same made the opening line
+  // read "Kathmandu Secondary School now, Kathmandu Secondary School next
+  // year."
+  return `${town} Junior School`;
 }
 
 /**

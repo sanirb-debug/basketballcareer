@@ -1,10 +1,4 @@
-import {
-  ACTIONS,
-  ENERGY_ENABLED,
-  TRAINING,
-  diminishingFor,
-  normalizeActions,
-} from '../engine/actions';
+import { ACTIONS, ENERGY_ENABLED, diminishingFor } from '../engine/actions';
 import { programById } from '../engine/colleges';
 import {
   ACTION_IDS,
@@ -12,6 +6,21 @@ import {
   type MonthAction,
   type TrainingState,
 } from '../engine/types';
+
+/**
+ * Planning the month (SPEC §3, §6).
+ *
+ * Ten slots changed what this screen has to be. A row of ten empty boxes and
+ * a grid you click ten times is a chore; what a player actually wants to say
+ * is "four shooting, two lifts, some film" — a quantity, not a sequence. So
+ * every action is one row with a stepper, the count is the state, and the
+ * whole month can be planned without scrolling twice.
+ *
+ * The two numbers on a row are the honest ones: how many of this you have
+ * planned, and how much the *next* one would be worth. Repeats fall away
+ * fast inside a month, and showing that is what turns ten slots into a menu
+ * rather than a button to hold down.
+ */
 
 interface Props {
   budget: number;
@@ -42,86 +51,105 @@ const CATEGORY_LABEL: Record<string, string> = {
   recovery: 'Recovery',
 };
 
+/** Mirrors the engine's within-month repeat curve, for the "next is worth" hint. */
+const REPEAT_FALLOFF = 0.72;
+
 export default function ActionPicker({
   budget,
   chosen,
   training,
-  energy,
   onChange,
 }: Props) {
-  const normalized = normalizeActions(chosen);
-  const remaining = budget - chosen.length;
+  const counts = new Map<ActionId, number>();
+  const targeted: { id: ActionId; target: string }[] = [];
 
-  const projectedEnergy = normalized.reduce(
-    (e, a) => Math.max(0, Math.min(100, e - ACTIONS[a.id].energyCost)),
-    Math.min(100, energy + TRAINING.PASSIVE_ENERGY_REGEN),
-  );
+  for (const action of chosen) {
+    const id = typeof action === 'string' ? action : action.id;
+    const target = typeof action === 'string' ? null : (action.target ?? null);
+    if (target) targeted.push({ id, target });
+    else counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
 
-  const add = (id: ActionId) => {
-    if (remaining <= 0) return;
-    onChange([...chosen, id]);
+  const used = chosen.length;
+  const remaining = budget - used;
+
+  const setCount = (id: ActionId, next: number) => {
+    // Everything that is not a bare instance of this action survives — which
+    // deliberately includes targeted actions like a queued campus visit, so
+    // stepping Shooting up and down never drops a visit off the plan.
+    const keep = chosen.filter((a) => typeof a !== 'string' || a !== id);
+    onChange([...keep, ...Array.from({ length: next }, () => id)]);
   };
 
-  const removeAt = (index: number) => {
-    onChange(chosen.filter((_, i) => i !== index));
+  const bump = (id: ActionId, delta: number) => {
+    const current = counts.get(id) ?? 0;
+    const next = Math.max(0, current + delta);
+    if (delta > 0 && remaining <= 0) return;
+    setCount(id, next);
   };
 
-  const labelFor = (index: number): string => {
-    const action = normalized[index];
-    if (!action) return '';
-    if (action.id === 'visit' && action.target) {
-      return `Visit ${programById(action.target)?.name ?? action.target}`;
-    }
-    return ACTIONS[action.id].label;
-  };
+  const clear = () => onChange([]);
 
   return (
     <section>
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-xs font-medium uppercase tracking-widest text-neutral-500">
-          This month
-        </h2>
-        <div className="text-sm text-neutral-400">
-          <span
-            className={
-              remaining === 0 ? 'text-neutral-500' : 'font-medium text-orange-400'
-            }
-          >
-            {remaining}
-          </span>{' '}
-          of {budget} action point{budget === 1 ? '' : 's'} left
+      {/* --- Header ------------------------------------------------------- */}
+      <div className="sticky top-0 z-10 -mx-1 mb-4 flex items-center gap-3 rounded-lg bg-neutral-900/95 px-3 py-2.5 backdrop-blur">
+        <div className="flex flex-1 items-center gap-2">
+          <span className="text-2xl font-semibold tabular-nums text-orange-400">
+            {used}
+          </span>
+          <span className="text-sm text-neutral-400">
+            of {budget} planned
+          </span>
         </div>
+        {used > 0 && (
+          <button
+            type="button"
+            onClick={clear}
+            className="rounded-md border border-neutral-700 px-3 py-1 text-xs text-neutral-300 transition hover:border-neutral-500"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        {Array.from({ length: budget }).map((_, slot) => {
-          if (!chosen[slot]) {
-            return (
-              <div
-                key={slot}
-                className="rounded-md border border-dashed border-neutral-800 px-4 py-2 text-sm text-neutral-600"
-              >
-                empty slot
-              </div>
-            );
-          }
-          return (
+      {/* --- What is planned --------------------------------------------- */}
+      {used === 0 ? (
+        <p className="mb-5 text-sm text-neutral-500">
+          Nothing planned. Add as much as you like — ten is the ceiling, and
+          doing the same thing over and over gets you less each time. Whatever
+          you set here carries into next month, so a routine only has to be
+          built once.
+        </p>
+      ) : (
+        <div className="mb-5 flex flex-wrap gap-1.5">
+          {[...counts.entries()].map(([id, n]) => (
             <button
-              key={slot}
+              key={id}
               type="button"
-              onClick={() => removeAt(slot)}
-              className="group rounded-md border border-orange-800 bg-orange-950/40 px-4 py-2 text-sm text-orange-200 hover:border-orange-600"
+              onClick={() => bump(id, -1)}
+              className="group rounded-full border border-orange-700/70 bg-orange-950/40 px-3 py-1 text-xs text-orange-200 transition hover:border-orange-500"
             >
-              {labelFor(slot)}
-              <span className="ml-2 text-orange-500/70 group-hover:text-orange-300">
+              {ACTIONS[id].label}
+              {n > 1 && <span className="ml-1 opacity-70">×{n}</span>}
+              <span className="ml-1.5 text-orange-500/60 group-hover:text-orange-300">
                 ×
               </span>
             </button>
-          );
-        })}
-      </div>
+          ))}
+          {targeted.map((t, i) => (
+            <span
+              key={`${t.id}-${i}`}
+              className="rounded-full border border-violet-700/70 bg-violet-950/40 px-3 py-1 text-xs text-violet-200"
+            >
+              Visit {programById(t.target)?.name ?? t.target}
+            </span>
+          ))}
+        </div>
+      )}
 
-      <div className="mt-5 space-y-5">
+      {/* --- The menu ----------------------------------------------------- */}
+      <div className="space-y-6">
         {CATEGORY_ORDER.map((category) => {
           const ids = ACTION_IDS.filter(
             (id) =>
@@ -132,81 +160,85 @@ export default function ActionPicker({
 
           return (
             <div key={category}>
-              <div className="text-[10px] font-medium uppercase tracking-widest text-neutral-600">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
                 {CATEGORY_LABEL[category]}
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
+
+              <ul className="divide-y divide-neutral-800/80 overflow-hidden rounded-xl border border-neutral-800">
                 {ids.map((id) => {
                   const def = ACTIONS[id];
-                  const streak = training.streaks[id] ?? 0;
-                  const multiplier = diminishingFor(streak);
-                  const stale = multiplier < 1 && def.trains.length > 0;
+                  const n = counts.get(id) ?? 0;
                   // A visit needs a target, so it is queued from the
                   // recruiting board rather than picked off this list.
                   const needsTarget = id === 'visit';
 
+                  // What the next one of these would actually be worth,
+                  // combining the across-month streak and this month's repeats.
+                  const streak = training.streaks[id] ?? 0;
+                  const nextWorth =
+                    diminishingFor(streak + n) * Math.pow(REPEAT_FALLOFF, n);
+                  const faded = def.trains.length > 0 && nextWorth < 0.7;
+
                   return (
-                    <button
+                    <li
                       key={id}
-                      type="button"
-                      disabled={remaining <= 0 || needsTarget}
-                      onClick={() => add(id)}
-                      title={
-                        needsTarget
-                          ? 'Queue a visit from the Recruiting tab'
-                          : undefined
-                      }
-                      className="flex items-start justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-900/50 px-4 py-3 text-left transition hover:border-neutral-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      className={`flex items-center gap-3 px-4 py-3 transition ${
+                        n > 0 ? 'bg-orange-950/20' : 'bg-neutral-900/40'
+                      }`}
                     >
-                      <span>
-                        <span className="block text-sm font-medium text-neutral-100">
-                          {def.label}
-                        </span>
-                        <span className="mt-0.5 block text-xs leading-snug text-neutral-500">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="text-sm font-medium text-neutral-100">
+                            {def.label}
+                          </span>
+                          {faded && (
+                            <span className="text-[11px] tabular-nums text-amber-500/90">
+                              next ×{nextWorth.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-xs leading-snug text-neutral-500">
                           {needsTarget
-                            ? 'Pick a program on the Recruiting tab.'
+                            ? 'Pick a program on the Career tab.'
                             : def.description}
+                        </p>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={n === 0 || needsTarget}
+                          onClick={() => bump(id, -1)}
+                          aria-label={`One fewer ${def.label}`}
+                          className="h-8 w-8 rounded-lg border border-neutral-700 text-neutral-300 transition hover:border-neutral-500 disabled:opacity-25"
+                        >
+                          −
+                        </button>
+                        <span
+                          className={`w-6 text-center text-sm tabular-nums ${
+                            n > 0 ? 'font-semibold text-orange-300' : 'text-neutral-600'
+                          }`}
+                        >
+                          {n}
                         </span>
-                      </span>
-                      <span className="shrink-0 text-right text-xs tabular-nums">
-                        {ENERGY_ENABLED && (
-                          <span
-                            className={
-                              def.energyCost < 0
-                                ? 'text-emerald-400'
-                                : 'text-neutral-500'
-                            }
-                          >
-                            {def.energyCost < 0 ? '+' : '−'}
-                            {Math.abs(def.energyCost)} nrg
-                          </span>
-                        )}
-                        {stale && (
-                          <span className="mt-0.5 block text-amber-500">
-                            ×{multiplier.toFixed(1)}
-                          </span>
-                        )}
-                      </span>
-                    </button>
+                        <button
+                          type="button"
+                          disabled={remaining <= 0 || needsTarget}
+                          onClick={() => bump(id, 1)}
+                          aria-label={`One more ${def.label}`}
+                          className="h-8 w-8 rounded-lg border border-neutral-700 text-neutral-300 transition hover:border-orange-600 hover:text-orange-300 disabled:opacity-25"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             </div>
           );
         })}
       </div>
-
-      {ENERGY_ENABLED && (
-        <p className="mt-4 text-xs text-neutral-600">
-          Energy after this month:{' '}
-          <span
-            className={projectedEnergy < 35 ? 'text-red-400' : 'text-neutral-400'}
-          >
-            {Math.round(projectedEnergy)}
-          </span>
-          {projectedEnergy < 35 && ' — low energy sharply raises injury risk'}
-        </p>
-      )}
     </section>
   );
 }

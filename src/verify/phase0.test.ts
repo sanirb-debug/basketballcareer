@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { phaseFor } from '../engine/calendar';
 import { createGame, type CreationInput } from '../engine/newGame';
 import { deepFreeze, tick } from '../engine/tick';
 import { autoTick } from './harness';
@@ -136,8 +137,13 @@ describe('month tick engine (SPEC §16.3)', () => {
 
   test('rejects more actions than the month affords', () => {
     const state = createGame(SEED, INPUT);
-    // September is offseason: 4 action points, so a fifth is a caller bug.
-    const tooMany: MonthAction[] = ['lift', 'lift', 'lift', 'lift', 'lift'];
+    // Budget-relative rather than a hard-coded five, so this keeps testing
+    // the guard rather than the number it happens to be set to.
+    const budget = phaseFor(state.clock).actionPoints;
+    const tooMany = Array.from(
+      { length: budget + 1 },
+      () => 'lift',
+    ) as MonthAction[];
     expect(() => tick(state, tooMany)).toThrow(/Too many actions/);
   });
 

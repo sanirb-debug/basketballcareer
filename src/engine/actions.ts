@@ -263,18 +263,18 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
 export const ENERGY_ENABLED = false;
 
 export const TRAINING = {
-  /** Attribute points a primary-weighted action yields at neutral conditions. */
   /**
-   * Tuned against the balance suite with `ENERGY_ENABLED` off.
+   * Attribute points a primary-weighted action yields at neutral conditions.
    *
-   * Energy used to hold development back roughly 30% over a career — a
-   * player grinding four actions a month spent far more than the monthly
-   * regen and trained at the low end of `energyTrainingFactor` most of the
-   * time. Removing that made 92% of dedicated careers reach the league
-   * against a 75% ceiling, so the base rate absorbs what energy used to take.
-   * Restore this to 3.4 if energy is ever switched back on.
+   * Tuned against the balance suite alongside `slotValue`. It absorbs
+   * everything the design stopped charging for: energy used to hold
+   * development back about 30% over a career, and the action budget went from
+   * an average of 2.7 a month to a flat 10. The per-slot taper does most of
+   * the work of keeping ten from being ten times one; this sets where the
+   * whole curve sits. Restore to 3.4 only alongside energy and the seasonal
+   * budget.
    */
-  BASE_GAIN: 2.15,
+  BASE_GAIN: 2.0,
 
   /**
    * SPEC §3 diminishing returns: ×1.0, ×0.8, ×0.6, floor at ×0.5, reset after
@@ -412,12 +412,40 @@ export function applyActions(
   // month would pay full rate four times over and sidestep SPEC §3 entirely.
   const repeatsThisMonth = new Map<ActionId, number>();
 
+  /*
+   * The n-th thing you do this month is worth less than the first, whatever
+   * it is.
+   *
+   * Without this, a flat ten-slot month either has to pay ten times one — in
+   * which case nobody who fills fewer than ten slots can compete — or the
+   * base rate has to drop so far that a player who picks four falls off the
+   * map. Neither is a game anybody wants to click through 264 times.
+   *
+   * With it, the first four slots carry about 60% of the month's value and
+   * the last six split the rest: filling all ten is genuinely better, and
+   * filling four is close enough that it is a real choice rather than a
+   * chore. Cumulative value of ten slots is ~1.6x that of four.
+   */
+  const slotValue = (index: number) => Math.pow(0.82, index);
+  let slot = 0;
+
   for (const id of chosen) {
     const def = ACTIONS[id];
     const energyF = ENERGY_ENABLED ? energyTrainingFactor(energy) : 1;
     const repeatIndex = repeatsThisMonth.get(id) ?? 0;
     const streak = (training.streaks[id] ?? 0) + repeatIndex;
-    const dim = diminishingFor(streak);
+    /*
+     * Two separate penalties, and they are separate on purpose.
+     *
+     * `diminishingFor` is the across-months curve from SPEC §3 and floors at
+     * ×0.5 — a player who shoots every month for a year still improves. The
+     * within-month one does not floor, because ten shooting sessions in a
+     * single February is not training, it is the same afternoon ten times.
+     * At ×0.72 per repeat the tenth is worth about 5% of the first, which is
+     * what makes a ten-slot month a menu to plan rather than one button to
+     * press ten times.
+     */
+    const dim = diminishingFor(streak) * Math.pow(0.72, repeatIndex);
     repeatsThisMonth.set(id, repeatIndex + 1);
 
     for (const { key, weight } of def.trains) {
@@ -437,6 +465,7 @@ export function applyActions(
         ethicF *
         energyF *
         outsideF *
+        slotValue(slot) *
         headroom *
         dim *
         jitter;
@@ -447,6 +476,7 @@ export function applyActions(
       }
     }
 
+    slot++;
     trustDelta += def.trustDelta;
     if (ENERGY_ENABLED) {
       energy = clamp(

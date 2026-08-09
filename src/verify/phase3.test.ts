@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { createGame, type CreationInput } from '../engine/newGame';
 import { ActionBudgetError, tick } from '../engine/tick';
 import { autoTick } from './harness';
-import { phaseFor } from '../engine/calendar';
+import { ACTION_POINTS_PER_MONTH, phaseFor } from '../engine/calendar';
 import {
   ACTIONS,
   ENERGY_ENABLED,
@@ -332,29 +332,34 @@ describe('injuries (SPEC §6)', () => {
 });
 
 describe('action points (SPEC §3)', () => {
-  test('the budget matches the season phase', () => {
-    const byMonth = [2, 2, 1, 3, 3, 3, 1, 4, 4, 4, 2, 2];
-    byMonth.forEach((expected, month) => {
-      expect(phaseFor({ year: 2027, month }).actionPoints, `month ${month}`).toBe(
-        expected,
-      );
-    });
+  test('the budget is flat, and generous, at every phase', () => {
+    // The seasonal ration is gone (see `ACTION_POINTS_PER_MONTH`): a real
+    // player lifts, shoots, watches film and sees his family in the same
+    // February. What stops ten sessions being worth ten is the diminishing
+    // curve on repeats, which is asserted separately above.
+    for (let month = 0; month < 12; month++) {
+      const info = phaseFor({ year: 2026, month });
+      expect(info.actionPoints, `month ${month}`).toBe(ACTION_POINTS_PER_MONTH);
+      // The phase itself still has a name and a character.
+      expect(info.label.length).toBeGreaterThan(0);
+    }
+    expect(ACTION_POINTS_PER_MONTH).toBe(10);
   });
 
-  test('spending more than the month affords is rejected', () => {
-    const state = createGame(3, INPUT); // August: offseason, 4 points
-    expect(() => tick(state, Array(5).fill('lift') as ActionId[])).toThrow(
-      ActionBudgetError,
+  test('spending more than the month affords is still rejected', () => {
+    const state = createGame(2, INPUT);
+    const budget = phaseFor(state.clock).actionPoints;
+    const tooMany = Array.from(
+      { length: budget + 1 },
+      () => 'shooting' as ActionId,
     );
-    expect(() => tick(state, Array(4).fill('lift') as ActionId[])).not.toThrow();
+    expect(() => tick(state, tooMany)).toThrow(ActionBudgetError);
+    // And exactly the budget is fine.
+    expect(() =>
+      tick(state, tooMany.slice(0, budget)),
+    ).not.toThrow();
   });
 
-  test('in-season months really are tighter than the offseason', () => {
-    // August (offseason) affords four; January (in season) affords two.
-    const august = phaseFor({ year: 2026, month: 7 }).actionPoints;
-    const january = phaseFor({ year: 2027, month: 0 }).actionPoints;
-    expect(august).toBeGreaterThan(january);
-  });
 
   test('a fresh run starts with an empty streak table', () => {
     const training = initialTrainingState();

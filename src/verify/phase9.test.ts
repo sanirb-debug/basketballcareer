@@ -528,7 +528,16 @@ describe('a whole career, end to end', () => {
     for (let seed = 1; seed <= 6; seed++) {
       const state = autoTickMonths(createGame(seed, INPUT), 340, policy);
       expect(state.careerEnd, `seed ${seed}`).not.toBeNull();
-      expect(state.monthsElapsed, `seed ${seed}`).toBeGreaterThan(57);
+
+      // The invariant is that a run never *stalls* — it always reaches a
+      // named ending. A short run is only acceptable for the one reason a
+      // real career ends at fourteen: the knee. Anything else finishing
+      // inside five years means the engine quietly gave up somewhere.
+      if (state.monthsElapsed <= 57) {
+        expect(state.careerEnd?.endingId, `seed ${seed} ended early`).toBe(
+          'career-ending-injury',
+        );
+      }
       // Nothing left dangling.
       expect(state.awaitingPath).toBe(false);
       expect(state.events.pending).toBeNull();

@@ -7,6 +7,10 @@ import { TEXTURE_LINE_COUNT, allTextureLines, textureFor } from '../engine/textu
 import { hasSecondPerson, toFirstPerson } from '../engine/voice';
 import { movesAbroad, schoolFor } from '../engine/school';
 import { countryById } from '../engine/countries';
+import { phaseFor } from '../engine/calendar';
+import { tick } from '../engine/tick';
+import { EVENT_COOLDOWN_MONTHS } from '../engine/events/engine';
+import { ATTRIBUTE_KEYS } from '../engine/types';
 import type { GameState, SchoolTier } from '../engine/types';
 
 /**
@@ -137,7 +141,12 @@ describe('the school fork is told in the right country (SPEC §4, §8)', () => {
   test('a Nepalese fourteen-year-old is not enrolled at an American high school', () => {
     for (const tier of ['powerhouse', 'public', 'prep'] as SchoolTier[]) {
       const school = schoolFor(tier, { city: 'Kathmandu', country: 'nepal' });
-      expect(school.middleSchoolName).toBe('Kathmandu Secondary School');
+      // Distinct from the public high school below, or the opening line
+      // reads "X Secondary School now, X Secondary School next year".
+      expect(school.middleSchoolName).toBe('Kathmandu Junior School');
+      expect(school.middleSchoolName).not.toBe(
+        schoolFor('public', { city: 'Kathmandu', country: 'nepal' }).name,
+      );
       // The two stay-at-home options are local; only the abroad one is not.
       if (tier !== 'prep') {
         expect(school.name).toContain('Kathmandu');
@@ -215,6 +224,118 @@ describe('a career from anywhere still runs to an ending', () => {
           );
         }
       }
+    }
+  });
+});
+
+describe('the month is a plan, not a chore (SPEC §3)', () => {
+  test('ten slots, at every phase of every stage', () => {
+    const state = createGame(2, input('usa'));
+    for (const stage of ['highschool', 'college', 'juco', 'nba'] as const) {
+      for (let month = 0; month < 12; month++) {
+        expect(
+          phaseFor({ year: 2030, month }, stage).actionPoints,
+          `${stage}/${month}`,
+        ).toBe(10);
+      }
+    }
+    expect(phaseFor(state.clock, state.stage).actionPoints).toBe(10);
+  });
+
+  test('breadth beats grinding one thing, which is the point of ten', () => {
+    const base = createGame(6, input('usa'));
+    const varied = tick(base, [
+      'shooting', 'handles', 'finishing', 'defense', 'playmaking',
+      'lift', 'conditioning', 'film', 'practice', 'study',
+    ]);
+    const ground = tick(base, Array.from({ length: 10 }, () => 'shooting'));
+
+    const total = (s: GameState) =>
+      ATTRIBUTE_KEYS.reduce((sum, k) => sum + (s.player.attributes[k] as number), 0);
+
+    expect(total(varied)).toBeGreaterThan(total(ground));
+
+    // And the tenth of the same thing is worth almost nothing.
+    const one = tick(base, ['shooting']);
+    const gainOne =
+      (one.player.attributes.catchAndShoot3 as number) -
+      (base.player.attributes.catchAndShoot3 as number);
+    const gainTen =
+      (ground.player.attributes.catchAndShoot3 as number) -
+      (base.player.attributes.catchAndShoot3 as number);
+    expect(gainTen).toBeGreaterThan(gainOne);
+    expect(gainTen).toBeLessThan(gainOne * 4);
+  });
+
+  test('filling four slots is a real choice, not a mistake', () => {
+    // The taper has to leave a partial month worth playing, or ten slots
+    // becomes ten mandatory clicks a month for 264 months.
+    const base = createGame(8, input('usa'));
+    const four = tick(base, ['shooting', 'lift', 'playmaking', 'film']);
+    const ten = tick(base, [
+      'shooting', 'lift', 'playmaking', 'film', 'defense',
+      'handles', 'finishing', 'conditioning', 'practice', 'study',
+    ]);
+
+    const gain = (s: GameState) =>
+      ATTRIBUTE_KEYS.reduce(
+        (sum, k) =>
+          sum +
+          ((s.player.attributes[k] as number) -
+            (base.player.attributes[k] as number)),
+        0,
+      );
+
+    expect(gain(ten)).toBeGreaterThan(gain(four));
+    // Ten is better, but nowhere near 2.5x better.
+    expect(gain(ten)).toBeLessThan(gain(four) * 2);
+  });
+});
+
+describe('the feed does not repeat itself', () => {
+  test('an event cannot come round again within the cooldown', () => {
+    expect(EVENT_COOLDOWN_MONTHS).toBeGreaterThan(12);
+
+    const state = autoTickMonths(createGame(14, input('usa')), 200);
+    const decisions = state.events.decisions;
+    expect(decisions.length).toBeGreaterThan(5);
+
+    const lastSeen = new Map<string, number>();
+    for (const d of decisions) {
+      const previous = lastSeen.get(d.eventId);
+      if (previous !== undefined) {
+        expect(
+          d.monthsElapsed - previous,
+          `${d.eventId} repeated too soon`,
+        ).toBeGreaterThanOrEqual(EVENT_COOLDOWN_MONTHS);
+      }
+      lastSeen.set(d.eventId, d.monthsElapsed);
+    }
+  });
+
+  test('the training notice does not fire on the same skill every month', () => {
+    const state = autoTickMonths(createGame(16, input('usa')), 120, () => [
+      'shooting', 'shooting', 'lift', 'film',
+    ]);
+
+    const notes = state.log.filter((e) => e.kind === 'training');
+    expect(notes.length).toBeGreaterThan(0);
+
+    // The guard is per skill, not global: two different skills improving in
+    // consecutive months is worth saying. The same skill three months running
+    // is what read like a bug.
+    const lastForSkill = new Map<string, number>();
+    for (const note of notes) {
+      const skill = note.text.match(/My ([a-z\- ]+)|The ([a-z\- ]+) finally/i);
+      const key = (skill?.[1] ?? skill?.[2] ?? note.text).trim();
+      const previous = lastForSkill.get(key);
+      if (previous !== undefined) {
+        expect(
+          note.monthsElapsed - previous,
+          `"${key}" mentioned again too soon`,
+        ).toBeGreaterThan(3);
+      }
+      lastForSkill.set(key, note.monthsElapsed);
     }
   });
 });
