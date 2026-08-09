@@ -123,7 +123,7 @@ export default function LifeScreen(props: Props) {
   const points = view.actionPoints;
 
   return (
-    <div className="relative mx-auto flex h-[100dvh] w-full max-w-[80rem] flex-col overflow-hidden bg-neutral-950 lg:border-x lg:border-neutral-800">
+    <div className="relative mx-auto flex h-[100dvh] w-full max-w-[96rem] flex-col overflow-hidden bg-neutral-950 lg:border-x lg:border-neutral-800">
       {/* --- App bar ------------------------------------------------------ */}
       <header className="flex shrink-0 items-center justify-between bg-orange-600 px-4 py-2.5">
         <span className="text-lg font-black tracking-tight text-white">
@@ -176,8 +176,16 @@ export default function LifeScreen(props: Props) {
             Nothing has happened yet. Play the month.
           </p>
         )}
+        {/*
+          The shell grows to fill a desktop, but prose does not get more
+          readable past about 70 characters — so the feed column caps its own
+          line length and centres inside whatever room it is given.
+        */}
         {view.feed.map((block) => (
-          <section key={block.monthsElapsed} className="mb-5 shrink-0">
+          <section
+            key={block.monthsElapsed}
+            className="mx-auto mb-5 w-full max-w-[42rem] shrink-0"
+          >
             <h2 className="mb-1 text-sm font-bold text-orange-500">
               {block.date}
             </h2>
@@ -280,7 +288,7 @@ export default function LifeScreen(props: Props) {
         either side is the wrong answer, and the panels are the thing there
         is room for.
       */}
-      <aside className="hidden min-h-0 w-[26rem] shrink-0 flex-col lg:flex xl:w-[34rem]">
+      <aside className="hidden min-h-0 w-[26rem] shrink-0 flex-col lg:flex xl:w-[34rem] 2xl:w-[42rem]">
         <div className="flex shrink-0 items-center gap-1 border-b border-neutral-800 bg-neutral-900 px-2">
           {(['career', 'money', 'people', 'activities'] as const).map((id) => (
             <button
@@ -394,7 +402,13 @@ function SheetView({
   children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-40 mx-auto flex h-[100dvh] max-w-[28rem] flex-col bg-neutral-950">
+    /*
+      Matches the shell's own width rather than a phone's. Capping this at
+      28rem meant that on an 860px window — wider than a phone, narrower than
+      the two-column breakpoint — the sheet opened as a narrow strip floating
+      over the feed.
+    */
+    <div className="fixed inset-0 z-40 mx-auto flex h-[100dvh] w-full max-w-[80rem] flex-col bg-neutral-950">
       <header className="flex shrink-0 items-center justify-between bg-orange-600 px-4 py-2.5">
         <span className="text-base font-bold text-white">{title}</span>
         <button
