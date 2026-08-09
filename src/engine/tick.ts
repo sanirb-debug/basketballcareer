@@ -40,13 +40,14 @@ import { hasAnyPath } from './careerPath';
 import { initialDraft } from './draft';
 import { advanceAcademics, isSchoolMonth } from './academics';
 import { advanceClass, playerRank } from './prospects';
-import { advanceHype, offeredAauTier } from './hype';
+import { AAU_LABEL, advanceHype, offeredAauTier } from './hype';
 import { advanceRecruiting } from './recruiting';
 import { advanceRelationships, coachTrustBonus } from './relationships';
 import { agePeople } from './people';
 import { assetEffects, driftFollowers } from './activities';
 import { distractionEffects, settleNightlife } from './nightlife';
 import { CHILD, childName } from './dating';
+import { textureFor } from './texture';
 import {
   milestoneHeadline,
   milestoneHype,
@@ -284,7 +285,7 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
         'hype',
         aauTier === 'none'
           ? 'No travel team for me this spring.'
-          : `I am playing ${aauTier.toUpperCase()} on the spring circuit.`,
+          : `I am playing for ${AAU_LABEL[aauTier].toLowerCase()} on the spring circuit.`,
       );
     }
   }
@@ -547,7 +548,29 @@ export function tick(state: GameState, actions: MonthAction[]): GameState {
     next = { ...next, log: [...state.log, ...log] };
   }
 
-  // --- 18. Firsts (SPEC §7) ---------------------------------------------
+  // --- 18. The rest of the life (SPEC §17) ------------------------------
+  // Flavour only, and drawn from a stream derived from the seed rather than
+  // the run's own — so a dense feed costs nothing in balance or determinism.
+  if (!next.careerEnd) {
+    const lines = textureFor(next, played.gamesPlayed > 0);
+    if (lines.length > 0) {
+      next = {
+        ...next,
+        log: [
+          ...next.log,
+          ...lines.map((text) => ({
+            monthsElapsed,
+            year: clock.year,
+            month: clock.month,
+            kind: 'life' as const,
+            text,
+          })),
+        ],
+      };
+    }
+  }
+
+  // --- 19. Firsts (SPEC §7) ---------------------------------------------
   // Last, so a milestone reported this month reflects everything that
   // happened in it — including a stage change that only just landed.
   next = recordMilestones(next, monthsElapsed);

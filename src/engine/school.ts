@@ -1,4 +1,5 @@
 import type { School, SchoolTier } from './types';
+import { countryById, isUSA } from './countries';
 
 /**
  * High school choice (SPEC §8).
@@ -72,19 +73,69 @@ export const MIDDLE_SCHOOL_TEAM = {
   startingTrust: 68,
 } as const;
 
-export function middleSchoolNameFor(city: string): string {
-  return `${city.trim() || 'Town'} Middle School`;
+export function middleSchoolNameFor(city: string, country?: string): string {
+  const town = city.trim() || 'Town';
+  if (!country || isUSA(country)) return `${town} Middle School`;
+  return `${town} Secondary School`;
+}
+
+/**
+ * The same three-way fork, told in the right country (SPEC §4, §8).
+ *
+ * The mechanics do not change — a powerhouse is still the crowded roster
+ * everybody watches — but the fiction has to. A fourteen-year-old in
+ * Kathmandu is not enrolling at Gary Lincoln High, and shipping him there
+ * with an American school name was the giveaway that nationality had been
+ * bolted on rather than built in.
+ *
+ * The interesting one is `prep`. For an American it is a development school
+ * down the road. For everybody else it is the decision to leave — and it is
+ * the only way out of the exposure penalty your country carries, which is
+ * exactly the trade real international prospects face at fifteen.
+ */
+function localize(tier: SchoolTier, city: string, country: string): Partial<School> {
+  const c = countryById(country);
+  const town = city.trim() || c.name;
+
+  switch (tier) {
+    case 'powerhouse':
+      return {
+        name: `${town} Basketball Academy`,
+        blurb: `The national programme's academy. The best young players in ${c.name} are already here, the coaching is real, and you will not start immediately — but this is the roster the federation actually watches.`,
+      };
+    case 'public':
+      return {
+        name: `${town} Secondary School`,
+        blurb: `You are the best player in the building on day one, and you will get every shot you want. Nobody who matters is going to see a minute of it.`,
+      };
+    case 'prep':
+      return {
+        name: 'Ridgeline Academy (USA)',
+        blurb: `Leave. A prep school in the States takes you at fifteen, and you will be four thousand miles from everyone you know. It is the only road that gets you in front of the people who decide these things — and your mother will not say a word about what it costs her.`,
+      };
+  }
 }
 
 export function schoolFor(
   tier: SchoolTier,
-  options: { name?: string; city?: string } = {},
+  options: { name?: string; city?: string; country?: string } = {},
 ): School {
   const base = SCHOOLS[tier];
+  const country = options.country ?? 'usa';
+  const local = isUSA(country)
+    ? {}
+    : localize(tier, options.city ?? '', country);
+
   return {
     ...base,
+    ...local,
     // A typed-in name replaces the default but keeps the tier's character.
-    name: options.name?.trim() || base.name,
-    middleSchoolName: middleSchoolNameFor(options.city ?? ''),
+    name: options.name?.trim() || local.name || base.name,
+    middleSchoolName: middleSchoolNameFor(options.city ?? '', country),
   };
+}
+
+/** Choosing to move abroad is choosing to be seen (SPEC §4). */
+export function movesAbroad(tier: SchoolTier, country: string): boolean {
+  return tier === 'prep' && !isUSA(country);
 }

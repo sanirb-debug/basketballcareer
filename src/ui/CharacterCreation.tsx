@@ -6,7 +6,7 @@ import {
   countryById,
   isUSA,
 } from '../engine/countries';
-import { SCHOOLS, SCHOOL_TIERS } from '../engine/school';
+import { SCHOOL_TIERS, schoolFor } from '../engine/school';
 import {
   POSITIONS,
   type Handedness,
@@ -74,6 +74,8 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
   if (!name.trim()) missing.push('a name');
   if (!homeCity.trim()) missing.push('a home city');
   const canSubmit = missing.length === 0;
+
+  const chosenSchool = schoolFor(schoolTier, { city: homeCity, country });
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -242,7 +244,10 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
 
       <div className="mt-4 space-y-3">
         {SCHOOL_TIERS.map((tier) => {
-          const school = SCHOOLS[tier];
+          // Previewed through the same localiser the engine uses, so the
+          // picker shows the school you will actually attend rather than an
+          // American default.
+          const school = schoolFor(tier, { city: homeCity, country });
           const selected = schoolTier === tier;
           return (
             <button
@@ -284,11 +289,11 @@ export default function CharacterCreation({ slot, onCreate, onCancel }: Props) {
           className={fieldClass}
           value={schoolName}
           onChange={(e) => setSchoolName(e.target.value)}
-          placeholder={SCHOOLS[schoolTier].name}
+          placeholder={chosenSchool.name}
         />
         <p className="mt-2 text-sm text-neutral-500">
-          Leave blank to use {SCHOOLS[schoolTier].name}. You will spend 8th
-          grade at your local middle school either way.
+          Leave blank to use {chosenSchool.name}. You will spend 8th grade at{' '}
+          {chosenSchool.middleSchoolName} either way.
         </p>
       </div>
 

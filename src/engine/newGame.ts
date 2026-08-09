@@ -10,7 +10,7 @@ import { rollGenetics } from './genetics';
 import { bodyAtAge } from './growth';
 import { rollStartingAttributes } from './attributes';
 import { initialTrainingState } from './actions';
-import { schoolFor } from './school';
+import { movesAbroad, schoolFor } from './school';
 import { initialAcademics } from './academics';
 import { initialRecruiting } from './recruiting';
 import { initialRelationships } from './relationships';
@@ -110,7 +110,19 @@ export function createGame(
   const school = schoolFor(input.schoolTier, {
     ...(input.schoolName ? { name: input.schoolName } : {}),
     city: input.homeCity,
+    country: origin.country,
   });
+
+  /*
+   * Moving abroad buys you out of most of your country's exposure penalty —
+   * you are now playing in front of the people who make the lists. It costs
+   * you at home, which is the trade every international prospect actually
+   * makes at fifteen.
+   */
+  const leftHome = movesAbroad(input.schoolTier, origin.country);
+  const exposureMultiplier = leftHome
+    ? Math.max(origin.exposureMultiplier, 0.8)
+    : origin.exposureMultiplier;
   const academics = initialAcademics(rng);
   const recruiting = initialRecruiting(rng);
   const relationships = initialRelationships(origin.familyStructure);
@@ -154,7 +166,7 @@ export function createGame(
       attributes,
       hiddenMeta,
     },
-    origin,
+    origin: { ...origin, exposureMultiplier },
     school,
     coachTrust: school.startingTrust,
     training: initialTrainingState(),
